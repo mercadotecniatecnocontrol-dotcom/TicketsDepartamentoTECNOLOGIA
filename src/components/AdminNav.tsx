@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { canManageInventory } from "@/lib/auth";
 import AdminSessionBadge from "./AdminSessionBadge";
+import AdminSoundControl from "./AdminSoundControl";
 
 export type AdminTab = "tickets" | "computadoras" | "telefonos" | "calendario";
 
@@ -92,8 +93,9 @@ export default function AdminNav({ currentTab }: AdminNavProps) {
           </div>
         </div>
 
-        {/* Right: Session Badge + Portal Button */}
-        <div className="flex items-center gap-2.5 shrink-0">
+        {/* Right: Sound Alert Control + Session Badge + Portal Button */}
+        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+          <AdminSoundControl />
           <AdminSessionBadge />
           <Link
             href="/"
