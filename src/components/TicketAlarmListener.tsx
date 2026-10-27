@@ -17,6 +17,7 @@ interface IncomingTicketNotice {
   title: string;
   user: string;
   departamento: string;
+  asignadoA?: string;
   timestamp: number;
 }
 
@@ -114,7 +115,9 @@ export default function TicketAlarmListener() {
             const matchesUser = shouldAlarmForUser(
               t.departamento || "",
               user.departamento,
-              user.role
+              user.role,
+              t.asignadoA,
+              user.nombre
             );
 
             if (matchesUser) {
@@ -123,6 +126,7 @@ export default function TicketAlarmListener() {
                 title: String(t.title || "Sin título"),
                 user: String(t.user || "Usuario"),
                 departamento: String(t.departamento || ""),
+                asignadoA: t.asignadoA ? String(t.asignadoA) : "",
                 timestamp: Date.now(),
               });
               break; // Una alerta a la vez
@@ -216,6 +220,11 @@ export default function TicketAlarmListener() {
                   <span className="font-semibold">Solicitante:</span> {activeAlert.user} (
                   {activeAlert.departamento})
                 </p>
+                {activeAlert.asignadoA && (
+                  <p className="line-clamp-1 text-[#003479] font-medium">
+                    <span className="font-semibold">Dirigido a:</span> {activeAlert.asignadoA}
+                  </p>
+                )}
               </div>
 
               {/* Botones de acción */}

@@ -104,17 +104,32 @@ export function stopAlarm(): void {
 /**
  * Determina si debe sonar la alarma para el usuario actual ante un ticket entrante.
  * Regla:
+ * - Si el ticket va dirigido específicamente a este usuario -> ¡SUENA su alarma!
  * - Si el usuario es 'admin' (Alan, Kevin, Glen Gerencia), le suena cualquier ticket.
  * - Si es usuario de departamento (Aldo, Erika, Glen Marketing), solo si el departamento coincide.
  */
 export function shouldAlarmForUser(
   ticketDepartamento: string,
   userDepartamento?: string | null,
-  userRole?: string | null
+  userRole?: string | null,
+  asignadoA?: string | null,
+  currentUserName?: string | null
 ): boolean {
   if (!userRole) return false;
+
+  // 1. Si el ticket está dirigido específicamente a este usuario
+  if (asignadoA && currentUserName) {
+    const cleanAsignado = asignadoA.trim().toLowerCase();
+    const cleanCurrent = currentUserName.trim().toLowerCase();
+    if (cleanAsignado.includes(cleanCurrent) || cleanCurrent.includes(cleanAsignado)) {
+      return true;
+    }
+  }
+
+  // 2. Si el usuario es 'admin'
   if (userRole === "admin") return true;
 
+  // 3. Si es usuario de departamento
   if (!userDepartamento || !ticketDepartamento) return false;
 
   const cleanTicket = ticketDepartamento.trim().toLowerCase();

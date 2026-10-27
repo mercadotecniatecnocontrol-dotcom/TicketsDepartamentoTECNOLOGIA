@@ -15,6 +15,7 @@ export type TicketRow = {
   fechaEsperada: string;
   respuesta?: string;
   evidencias?: string[];
+  asignadoA?: string;
   created_at?: string;
 };
 

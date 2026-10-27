@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState, useEffect, useCallback } from "react";
 import { DEPARTAMENTOS } from "@/lib/departamentos";
+import { getUsersByDepartment } from "@/lib/auth";
 import AdminNav from "@/components/AdminNav";
 
 interface Ticket {
@@ -21,10 +22,11 @@ interface Ticket {
   fechaEsperada: string;
   respuesta?: string;
   evidencias?: string[];
+  asignadoA?: string;
 }
 
 const INITIAL_NEW_TICKET_FORM = {
-  user: "", title: "", departamento: "Sistemas", sucursal: "Chihuahua",
+  user: "", title: "", departamento: "Sistemas", asignadoA: "Kevin", sucursal: "Chihuahua",
   ip: "", priority: "Media", detalles: ""
 };
 
@@ -253,6 +255,7 @@ function AdminDashboardContent() {
         fechaInicio: todayYMD,
         fechaEsperada: "",
         evidencias: [],
+        asignadoA: newTicketForm.asignadoA || "",
       };
       const res = await fetch("/api/tickets", {
         method: "POST",
@@ -483,7 +486,14 @@ function AdminDashboardContent() {
                         className="hover:bg-[#003479]/[0.025] transition-colors cursor-pointer group"
                       >
                         <td className="px-4 sm:px-5 py-3.5 font-mono text-xs font-bold text-[#003479] whitespace-nowrap">{ticket.id}</td>
-                        <td className="px-4 sm:px-5 py-3.5 font-medium text-[#37312E] text-sm whitespace-nowrap">{ticket.user}</td>
+                        <td className="px-4 sm:px-5 py-3.5 whitespace-nowrap">
+                          <p className="font-medium text-[#37312E] text-sm">{ticket.user}</p>
+                          {ticket.asignadoA && (
+                            <span className="text-[10px] text-[#003479] font-semibold bg-[#003479]/5 px-1.5 py-0.5 rounded border border-[#003479]/10 inline-block mt-0.5">
+                              👤 {ticket.asignadoA}
+                            </span>
+                          )}
+                        </td>
                         <td className="px-4 sm:px-5 py-3.5 text-[#37312E]/70 text-xs max-w-[220px] truncate hidden md:table-cell">{ticket.title}</td>
                         <td className="px-4 sm:px-5 py-3.5 hidden lg:table-cell">
                           <span className={`text-xs font-medium px-2 py-0.5 rounded border ${priorityColors(ticket.priority)}`}>{ticket.priority}</span>
@@ -596,10 +606,11 @@ function AdminDashboardContent() {
                 <div><p className="text-[10px] font-semibold text-[#37312E]/50 uppercase tracking-widest mb-0.5">Fecha de Ingreso</p><p className="text-[#37312E] text-xs">{selectedTicket.date}</p></div>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3.5 bg-[#F7F8FA] rounded-xl border border-[#EAEAEA] text-xs">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 bg-[#F7F8FA] rounded-xl border border-[#EAEAEA] text-xs">
                 <div><p className="text-[9px] font-semibold text-[#37312E]/40 uppercase tracking-widest mb-0.5">Departamento</p><p className="font-medium text-[#37312E]">{selectedTicket.departamento}</p></div>
-                <div><p className="text-[9px] font-semibold text-[#37312E]/40 uppercase tracking-widest mb-0.5">Sucursal que emite el ticket</p><p className="font-medium text-[#37312E]">{selectedTicket.sucursal}</p></div>
-                <div><p className="text-[9px] font-semibold text-[#37312E]/40 uppercase tracking-widest mb-0.5">IP / Acceso Remoto</p><p className="font-mono text-[#003479] font-medium">{selectedTicket.ip || "Local"}</p></div>
+                <div><p className="text-[9px] font-semibold text-[#37312E]/40 uppercase tracking-widest mb-0.5">Dirigido a</p><p className="font-bold text-[#003479]">{selectedTicket.asignadoA || "Todo el equipo"}</p></div>
+                <div><p className="text-[9px] font-semibold text-[#37312E]/40 uppercase tracking-widest mb-0.5">Sucursal</p><p className="font-medium text-[#37312E]">{selectedTicket.sucursal}</p></div>
+                <div><p className="text-[9px] font-semibold text-[#37312E]/40 uppercase tracking-widest mb-0.5">IP / Remoto</p><p className="font-mono text-[#003479] font-medium">{selectedTicket.ip || "Local"}</p></div>
               </div>
 
               {/* Fechas: inicio automático, resolución establecida por el administrador */}
@@ -740,9 +751,12 @@ function AdminDashboardContent() {
                         value={newTicketForm.departamento}
                         onChange={(e) => {
                           const d = e.target.value;
+                          const users = getUsersByDepartment(d as any);
+                          const firstUser = users.length > 0 ? users[0].nombre : "";
                           setNewTicketForm(p => ({
                             ...p,
                             departamento: d,
+                            asignadoA: firstUser,
                             ...(d !== "Sistemas" ? { ip: "" } : {})
                           }));
                           if (d !== "Sistemas" && createErrors.ip) {
@@ -783,6 +797,42 @@ function AdminDashboardContent() {
                       </select>
                       <div className="pointer-events-none absolute inset-y-0 right-2.5 flex items-center text-[#37312E]/40"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg></div>
                     </div>
+                  </div>
+                </div>
+
+                {/* Dirigido a */}
+                <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-[10px] font-bold text-[#003479] uppercase tracking-wider">
+                      Dirigido a (Personal de {newTicketForm.departamento}) *
+                    </label>
+                    <span className="text-[10px] text-zinc-500 font-medium">
+                      {getUsersByDepartment(newTicketForm.departamento as any).length} disponibles
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {getUsersByDepartment(newTicketForm.departamento as any).map((u) => {
+                      const sel = newTicketForm.asignadoA === u.nombre;
+                      return (
+                        <button
+                          key={u.id}
+                          type="button"
+                          onClick={() => setNewTicketForm(p => ({ ...p, asignadoA: u.nombre }))}
+                          className={`p-2.5 rounded-xl border text-left flex items-center gap-2.5 cursor-pointer transition-all ${
+                            sel ? "border-[#003479] bg-white ring-1 ring-[#003479] shadow-xs" : "border-zinc-200 bg-white hover:bg-zinc-50"
+                          }`}
+                        >
+                          <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${sel ? "bg-[#003479] text-white" : "bg-[#003479]/10 text-[#003479]"}`}>
+                            {u.nombre.charAt(0)}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className={`text-xs font-bold truncate ${sel ? "text-[#003479]" : "text-zinc-800"}`}>{u.nombre}</p>
+                            <p className="text-[10px] text-zinc-500 truncate">{u.cargo}</p>
+                          </div>
+                          {sel && <span className="text-[10px] text-[#003479] font-bold">✓</span>}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 

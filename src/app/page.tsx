@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState, useEffect, Suspense } from "react";
 import { DEPARTAMENTOS, DEPARTAMENTO_INFO, type Departamento } from "@/lib/departamentos";
 import { useAuth } from "@/lib/auth-context";
+import { getUsersByDepartment } from "@/lib/auth";
 
 interface Ticket {
   id: string;
@@ -20,6 +21,7 @@ interface Ticket {
   fechaEsperada: string;
   respuesta?: string;
   evidencias?: string[];
+  asignadoA?: string;
 }
 
 const statusBadge = (s: string) => {
@@ -56,10 +58,13 @@ function HomeContent() {
   const [solicitante, setSolicitante] = useState("");
   const [asunto, setAsunto] = useState("");
   const [departamento, setDepartamento] = useState<Departamento>("Sistemas");
+  const [asignadoA, setAsignadoA] = useState<string>("Kevin");
   const [sucursal, setSucursal] = useState("Chihuahua");
   const [ip, setIp] = useState("");
   const [prioridad, setPrioridad] = useState("Media");
   const [detalles, setDetalles] = useState("");
+
+  const currentDeptUsers = getUsersByDepartment(departamento);
 
   const [createdTicketId, setCreatedTicketId] = useState<string | null>(null);
   const [copiedFolio, setCopiedFolio] = useState(false);
@@ -171,6 +176,7 @@ function HomeContent() {
         fechaEsperada: "",
         respuesta: "",
         evidencias: [],
+        asignadoA: asignadoA || (currentDeptUsers[0]?.nombre || ""),
       };
 
       const res = await fetch("/api/tickets", {
@@ -518,6 +524,12 @@ function HomeContent() {
                           setIp("");
                           if (formErrors.ip) setFormErrors((p) => ({ ...p, ip: undefined }));
                         }
+                        const users = getUsersByDepartment(newDept);
+                        if (users.length > 0) {
+                          setAsignadoA(users[0].nombre);
+                        } else {
+                          setAsignadoA("");
+                        }
                       }}
                       className="w-full px-3.5 py-2.5 border border-[#EAEAEA] rounded-xl bg-white text-sm text-[#37312E] focus:outline-none focus:border-[#003479] focus:ring-2 focus:ring-[#003479]/10 transition-all cursor-pointer pr-8"
                     >
@@ -554,6 +566,67 @@ function HomeContent() {
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
                     </div>
                   </div>
+                </div>
+              </div>
+
+              {/* Usuario del Departamento a quien va dirigido el ticket */}
+              <div className="p-4 sm:p-5 rounded-2xl border border-[#003479]/15 bg-gradient-to-br from-[#003479]/[0.03] to-[#003479]/[0.01]">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-3">
+                  <div>
+                    <label className="text-xs font-bold text-[#003479] uppercase tracking-wider flex items-center gap-1.5">
+                      <svg className="w-4 h-4 text-[#003479]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                      <span>¿A qué usuario de {departamento} va dirigido?</span> <span className="text-[#CA1224]">*</span>
+                    </label>
+                    <p className="text-[11px] text-[#37312E]/60 mt-0.5">
+                      Selecciona al usuario encargado de atender tu solicitud
+                    </p>
+                  </div>
+                  <span className="text-[10px] text-[#003479] font-semibold bg-[#003479]/10 px-2.5 py-1 rounded-full self-start sm:self-auto">
+                    {currentDeptUsers.length === 1 ? "1 usuario disponible" : `${currentDeptUsers.length} usuarios disponibles`}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {currentDeptUsers.map((u) => {
+                    const isSelected = asignadoA === u.nombre;
+                    return (
+                      <button
+                        key={u.id}
+                        type="button"
+                        onClick={() => setAsignadoA(u.nombre)}
+                        className={`p-3 rounded-xl border text-left transition-all flex items-center gap-3 cursor-pointer ${
+                          isSelected
+                            ? "border-[#003479] bg-white ring-2 ring-[#003479]/20 shadow-xs"
+                            : "border-[#EAEAEA] bg-white hover:border-zinc-300 hover:bg-zinc-50/70"
+                        }`}
+                      >
+                        <div
+                          className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm shrink-0 transition-transform ${
+                            isSelected ? "bg-[#003479] text-white scale-105" : "bg-[#003479]/10 text-[#003479]"
+                          }`}
+                        >
+                          {u.nombre.charAt(0)}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between">
+                            <span className={`text-xs font-bold ${isSelected ? "text-[#003479]" : "text-[#37312E]"}`}>
+                              {u.nombre}
+                            </span>
+                            {isSelected && (
+                              <span className="w-4 h-4 rounded-full bg-[#003479] text-white flex items-center justify-center text-[10px] font-bold">
+                                ✓
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-[#37312E]/60 truncate mt-0.5">
+                            {u.cargo}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -748,7 +821,7 @@ function HomeContent() {
                 </div>
 
                 {/* Metadata grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 bg-white rounded-xl border border-[#EAEAEA] text-xs">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 p-3.5 bg-white rounded-xl border border-[#EAEAEA] text-xs">
                   <div>
                     <span className="text-[10px] uppercase font-semibold text-[#37312E]/50 block">Solicitante</span>
                     <span className="font-medium text-[#37312E]">{consultTicket.user}</span>
@@ -756,6 +829,10 @@ function HomeContent() {
                   <div>
                     <span className="text-[10px] uppercase font-semibold text-[#37312E]/50 block">Departamento</span>
                     <span className="font-medium text-[#37312E]">{consultTicket.departamento}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] uppercase font-semibold text-[#37312E]/50 block">Dirigido a</span>
+                    <span className="font-bold text-[#003479]">{consultTicket.asignadoA || "Todo el equipo"}</span>
                   </div>
                   <div>
                     <span className="text-[10px] uppercase font-semibold text-[#37312E]/50 block">Sucursal</span>

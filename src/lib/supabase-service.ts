@@ -44,6 +44,14 @@ export const INITIAL_TELEFONOS: TelefonoRow[] = [
 // Normalizadores para tolerar campos camelCase / snake_case indistintamente
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export function normalizeTicket(row: any): TicketRow {
+  let asignado = String(row.asignadoA ?? row.asignado_a ?? row.asignado ?? "");
+  if (!asignado && typeof row.detalles === "string") {
+    const match = row.detalles.match(/\[Dirigido a:\s*([^\]\n]+)\]/i);
+    if (match) {
+      asignado = match[1].trim();
+    }
+  }
+
   return {
     id: String(row.id || ""),
     title: String(row.title || ""),
@@ -59,6 +67,7 @@ export function normalizeTicket(row: any): TicketRow {
     fechaEsperada: String(row.fechaEsperada ?? row.fecha_esperada ?? ""),
     respuesta: String(row.respuesta || ""),
     evidencias: Array.isArray(row.evidencias) ? row.evidencias : [],
+    asignadoA: asignado,
     created_at: row.created_at,
   };
 }
@@ -132,9 +141,9 @@ export async function createTicket(ticket: Partial<TicketRow>): Promise<TicketRo
     fechaEsperada: ticket.fechaEsperada || "",
     respuesta: ticket.respuesta || "",
     evidencias: ticket.evidencias || [],
+    asignadoA: ticket.asignadoA || "",
     created_at: new Date().toISOString(),
   };
-
 
   try {
     const local = readDb<TicketRow[]>(TICKETS_FILE, INITIAL_TICKETS);
@@ -155,6 +164,20 @@ export async function createTicket(ticket: Partial<TicketRow>): Promise<TicketRo
       if (!error && data) {
         return normalizeTicket(data);
       }
+
+      // Si falla por columna faltante en Supabase (ej: asignadoA aún no añadida en la tabla SQL)
+      if (error && (error.message?.includes("asignadoA") || error.code === "PGRST204")) {
+        const fallbackTicket: any = { ...newTicket };
+        delete fallbackTicket.asignadoA;
+        if (newTicket.asignadoA) {
+          fallbackTicket.detalles = `[Dirigido a: ${newTicket.asignadoA}]\n` + (fallbackTicket.detalles || "");
+        }
+        const retry = await client.from("tickets").insert([fallbackTicket]).select().single();
+        if (!retry.error && retry.data) {
+          return { ...normalizeTicket(retry.data), asignadoA: newTicket.asignadoA };
+        }
+      }
+
       console.warn("[Supabase] No se pudo insertar en Supabase, guardado localmente:", error?.message);
     } catch (e) {
       console.warn("[Supabase] Excepción al insertar ticket en Supabase:", e);
