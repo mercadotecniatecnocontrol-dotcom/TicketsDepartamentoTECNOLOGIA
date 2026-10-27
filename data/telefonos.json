@@ -1,0 +1,122 @@
+[
+  {
+    "id": "TEL-1",
+    "usuario": "GARDEA GIRON OMAR RICARDO",
+    "departamento": "CHIHUAHUA ALMACEN",
+    "numero": "6143849069",
+    "marca": "SAMSUNG",
+    "modelo": "A57 5G",
+    "imei": "357443195292272",
+    "observaciones": "NUEVO"
+  },
+  {
+    "id": "TEL-2",
+    "usuario": "SOTO GARCIA CRUZ FRANCISCO",
+    "departamento": "ALMACEN",
+    "numero": "6142504774",
+    "marca": "SAMSUNG",
+    "modelo": "A57 5G",
+    "imei": "357443195286316",
+    "observaciones": "NUEVO"
+  },
+  {
+    "id": "TEL-3",
+    "usuario": "CONTRERAS NIDIA",
+    "departamento": "ABASTECIMIENTO- ALMACEN",
+    "numero": "6141635895",
+    "marca": "SAMSUNG",
+    "modelo": "A57 5G",
+    "imei": "357443195288973",
+    "observaciones": "NUEVO"
+  },
+  {
+    "id": "TEL-4",
+    "usuario": "BLANCO MUÑOZ CRISTINA LIZETH",
+    "departamento": "GESTORIA",
+    "numero": "6144545125",
+    "marca": "IPHONE",
+    "modelo": "11",
+    "imei": "353979106874991",
+    "observaciones": "USADO"
+  },
+  {
+    "id": "TEL-5",
+    "usuario": "CANO CORRAL HECTOR ADRIAN",
+    "departamento": "OPERACIONES",
+    "numero": "6143429806",
+    "marca": "SAMSUNG",
+    "modelo": "A57 5G",
+    "imei": "357443195291324",
+    "observaciones": "NUEVO"
+  },
+  {
+    "id": "TEL-6",
+    "usuario": "ESCALANTE JARAMILLO ANA KAREN",
+    "departamento": "GESTORIA",
+    "numero": "6145941097",
+    "marca": "SAMSUNG",
+    "modelo": "A10S",
+    "imei": "357079102388363",
+    "observaciones": "USADO"
+  },
+  {
+    "id": "TEL-7",
+    "usuario": "JAIME RUEL LUNA ESPINOZA",
+    "departamento": "OPERACIONES",
+    "numero": "6142781803",
+    "marca": "SAMSUNG",
+    "modelo": "A57 5G",
+    "imei": "337443195283602",
+    "observaciones": "NUEVO"
+  },
+  {
+    "id": "TEL-8",
+    "usuario": "SAUL ISMAEL BARRAZA LUYA",
+    "departamento": "OPERACIONES",
+    "numero": "6141568460",
+    "marca": "SAMSUNG",
+    "modelo": "A57 5G",
+    "imei": "357443195291274",
+    "observaciones": "NUEVO"
+  },
+  {
+    "id": "TEL-9",
+    "usuario": "EVA ALEJANDRA ESPINOZA",
+    "departamento": "FACTURACION",
+    "numero": "6141414198",
+    "marca": "OUKITEL",
+    "modelo": "G1",
+    "imei": "354964201551933",
+    "observaciones": "USADO"
+  },
+  {
+    "id": "TEL-10",
+    "usuario": "KENIA GUZMAN",
+    "departamento": "GESTORIA",
+    "numero": "6142567708",
+    "marca": "OUKITEL",
+    "modelo": "G1",
+    "imei": "354964201157939",
+    "observaciones": "USADO"
+  },
+  {
+    "id": "TEL-11",
+    "usuario": "SERGIO CARMONA LAGUNA",
+    "departamento": "OPERACIONES",
+    "numero": "6143499380",
+    "marca": "SAMSUNG",
+    "modelo": "A57 5G",
+    "imei": "357443195283487",
+    "observaciones": "USADO"
+  },
+  {
+    "id": "TEL-12",
+    "usuario": "JOSUE HERNANDEZ PRIETO",
+    "departamento": "OPERACIONES",
+    "numero": "6141918610",
+    "marca": "SAMSUNG",
+    "modelo": "A57 5G",
+    "imei": "357443195267258",
+    "observaciones": "NUEVO"
+  }
+]

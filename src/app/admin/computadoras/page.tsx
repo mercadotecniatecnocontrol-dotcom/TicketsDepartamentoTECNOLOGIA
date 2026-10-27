@@ -2,6 +2,10 @@
 
 import Link from "next/link";
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/auth-context";
+import { canManageInventory } from "@/lib/auth";
+import AdminNav from "@/components/AdminNav";
 
 interface Computadora {
   id: string;
@@ -151,7 +155,20 @@ const INITIAL_FORM_DATA: Omit<Computadora, "id"> = {
 };
 
 export default function ComputadorasDashboard() {
-  const [computadoras, setComputadoras] = useState<Computadora[]>(INITIAL_COMPUTADORAS);
+  const router = useRouter();
+  const { user, isLoading: authLoading } = useAuth();
+
+  // Redirigir si no tiene permisos de inventario
+  useEffect(() => {
+    if (!authLoading && user && !canManageInventory(user.departamento)) {
+      router.replace("/admin");
+    }
+  }, [authLoading, user, router]);
+
+  const [computadoras, setComputadoras] = useState<Computadora[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterEstatus, setFilterEstatus] = useState<string>("ALL");
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
@@ -163,6 +180,9 @@ export default function ComputadorasDashboard() {
   const [formErrors, setFormErrors] = useState<{ ns?: string; modelo?: string }>({});
   const [formData, setFormData] = useState<Omit<Computadora, "id">>(INITIAL_FORM_DATA);
 
+  // ─── CORRECCIÓN DE BUG: APERTURA DE MODAL DE REGISTRO ────────────────────────
+  // Resetea el formulario a sus valores iniciales, limpia errores previos
+  // y actualiza el estado booleano 'isRegisterModalOpen' a true para desplegar el modal.
   const handleOpenRegisterModal = () => {
     setFormData({ ...INITIAL_FORM_DATA });
     setFormErrors({});
@@ -181,7 +201,7 @@ export default function ComputadorasDashboard() {
     };
   }, [isRegisterModalOpen, selectedEquipo, editingEquipo]);
 
-  const sanitizeComputadora = (c: any, index: number): Computadora => ({
+  const sanitizeComputadora = (c: Record<string, unknown>, index: number): Computadora => ({
     id: c?.id ? String(c.id) : `COMP-${100 + index}`,
     equipo: String(c?.equipo || "LAPTOP").toUpperCase(),
     ns: String(c?.ns || "").toUpperCase(),
@@ -190,40 +210,43 @@ export default function ComputadorasDashboard() {
     procesador: String(c?.procesador || "").toUpperCase(),
     ram: String(c?.ram || "16GB"),
     discoDuro: String(c?.discoDuro || "SSD 512GB"),
-    estatus: ["SIN ASIGNAR", "ASIGNADA", "EN REPARACIÓN", "BAJA"].includes(c?.estatus)
-      ? c.estatus
+    estatus: typeof c?.estatus === "string" && ["SIN ASIGNAR", "ASIGNADA", "EN REPARACIÓN", "BAJA"].includes(c.estatus)
+      ? (c.estatus as Computadora["estatus"])
       : "SIN ASIGNAR",
     usuario: String(c?.usuario || "N/D").toUpperCase(),
     observaciones: String(c?.observaciones || "").toUpperCase()
   });
 
-  // Load from LocalStorage
+  // Load from API
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem("tecnocontrol_computadoras");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          setComputadoras(parsed.map(sanitizeComputadora));
-        } else {
-          setComputadoras(INITIAL_COMPUTADORAS);
-        }
-      } else {
-        localStorage.setItem("tecnocontrol_computadoras", JSON.stringify(INITIAL_COMPUTADORAS));
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        const res = await fetch("/api/computadoras");
+        if (!res.ok) throw new Error("Error cargando datos");
+        const data = await res.json();
+        setComputadoras(Array.isArray(data) ? data.map((item: Record<string, unknown>, idx: number) => sanitizeComputadora(item, idx)) : INITIAL_COMPUTADORAS);
+      } catch (e) {
+        console.error(e);
+        setApiError("No se pudo cargar el inventario. Refresca la página.");
+        setComputadoras(INITIAL_COMPUTADORAS);
+      } finally {
+        setLoading(false);
       }
-    } catch (e) {
-      console.error(e);
-      setComputadoras(INITIAL_COMPUTADORAS);
+    };
+    loadData();
+
+    // Auto-abrir modal si se navega con ?register=true
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("register") === "true" || params.get("action") === "registrar") {
+        setTimeout(() => handleOpenRegisterModal(), 100);
+      }
     }
   }, []);
 
   const saveComputadoras = (updated: Computadora[]) => {
     setComputadoras(updated);
-    try {
-      localStorage.setItem("tecnocontrol_computadoras", JSON.stringify(updated));
-    } catch (e) {
-      console.error(e);
-    }
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -238,21 +261,13 @@ export default function ComputadorasDashboard() {
     }
   };
 
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const errors: { ns?: string; modelo?: string } = {};
-    if (!formData.ns.trim()) {
-      errors.ns = "El Número de Serie (NS) es obligatorio.";
-    }
-    if (!formData.modelo.trim()) {
-      errors.modelo = "El Modelo del equipo es obligatorio.";
-    }
-
-    if (Object.keys(errors).length > 0) {
-      setFormErrors(errors);
-      return;
-    }
+    if (!formData.ns.trim()) errors.ns = "El Número de Serie (NS) es obligatorio.";
+    if (!formData.modelo.trim()) errors.modelo = "El Modelo del equipo es obligatorio.";
+    if (Object.keys(errors).length > 0) { setFormErrors(errors); return; }
 
     const newComputadora: Computadora = {
       id: `COMP-${Date.now().toString().slice(-4)}`,
@@ -270,22 +285,34 @@ export default function ComputadorasDashboard() {
       observaciones: formData.observaciones.trim().toUpperCase() || "NUEVA LISTA PARA USAR"
     };
 
-    const updated = [newComputadora, ...computadoras];
-    saveComputadoras(updated);
-    setLastRegistered(newComputadora.ns);
-    setShowSuccessAlert(true);
-    setFilterEstatus("ALL");
-    setSearchTerm("");
-    setIsRegisterModalOpen(false);
-    setFormData({ ...INITIAL_FORM_DATA });
-    setFormErrors({});
+    setSaving(true);
+    try {
+      const res = await fetch("/api/computadoras", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newComputadora),
+      });
+      if (!res.ok) throw new Error();
+      saveComputadoras([newComputadora, ...computadoras]);
+      setLastRegistered(newComputadora.ns);
+      setShowSuccessAlert(true);
+      setFilterEstatus("ALL");
+      setSearchTerm("");
+      setIsRegisterModalOpen(false);
+      setFormData({ ...INITIAL_FORM_DATA });
+      setFormErrors({});
+    } catch {
+      setApiError("Error al registrar la computadora. Intente de nuevo.");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleUpdate = (e: React.FormEvent) => {
+  const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingEquipo) return;
 
-    const updated = computadoras.map(c => c.id === editingEquipo.id ? {
+    const updatedComp = {
       ...editingEquipo,
       ns: (editingEquipo.ns || "").trim().toUpperCase(),
       modelo: (editingEquipo.modelo || "").trim().toUpperCase(),
@@ -297,22 +324,38 @@ export default function ComputadorasDashboard() {
         ? "N/D"
         : (editingEquipo.usuario || "").trim().toUpperCase(),
       observaciones: (editingEquipo.observaciones || "").trim().toUpperCase()
-    } : c);
+    };
 
-    saveComputadoras(updated);
-    if (selectedEquipo?.id === editingEquipo.id) {
-      setSelectedEquipo(editingEquipo);
+    setSaving(true);
+    try {
+      const res = await fetch("/api/computadoras", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updatedComp),
+      });
+      if (!res.ok) throw new Error();
+      const list = computadoras.map(c => c.id === updatedComp.id ? updatedComp : c);
+      saveComputadoras(list);
+      if (selectedEquipo?.id === editingEquipo.id) setSelectedEquipo(updatedComp);
+      setEditingEquipo(null);
+    } catch {
+      setApiError("Error al actualizar. Intente de nuevo.");
+    } finally {
+      setSaving(false);
     }
-    setEditingEquipo(null);
   };
 
-  const handleDelete = (id: string, e?: React.MouseEvent) => {
+  const handleDelete = async (id: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
-    if (confirm("¿Estás seguro de eliminar este registro del inventario?")) {
-      const updated = computadoras.filter(item => item.id !== id);
-      saveComputadoras(updated);
+    if (!confirm("¿Estás seguro de eliminar este registro del inventario?")) return;
+    try {
+      const res = await fetch(`/api/computadoras?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      saveComputadoras(computadoras.filter(item => item.id !== id));
       if (selectedEquipo?.id === id) setSelectedEquipo(null);
       if (editingEquipo?.id === id) setEditingEquipo(null);
+    } catch {
+      setApiError("Error al eliminar. Intente de nuevo.");
     }
   };
 
@@ -391,77 +434,32 @@ export default function ComputadorasDashboard() {
   const asignadas = computadoras.filter(c => c.estatus === "ASIGNADA").length;
   const enReparacion = computadoras.filter(c => c.estatus === "EN REPARACIÓN").length;
 
+  if (!authLoading && user && !canManageInventory(user.departamento)) {
+    return (
+      <div className="min-h-screen bg-[#F7F8FA] flex items-center justify-center p-6 text-center">
+        <div className="bg-white p-6 rounded-2xl border border-[#EAEAEA] shadow-md max-w-sm">
+          <p className="text-sm font-semibold text-[#003479]">Acceso restringido</p>
+          <p className="text-xs text-[#37312E]/60 mt-1">
+            El departamento de {user.departamento} no tiene acceso a Computadoras. Redirigiendo al panel...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-[#FAFAFA] font-sans selection:bg-[#003479]/20 selection:text-[#003479] pb-16">
-      {/* Top Navbar */}
-      <nav className="sticky top-0 z-40 w-full border-b border-[#EAEAEA] bg-white/95 backdrop-blur-xl animate-fade-in-up shadow-xs">
-        <div className="max-w-[1400px] mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-6 sm:gap-8">
-            <div className="flex items-center gap-3">
-              <img src="/logotecno.png" alt="Tecnocontrol Logo" style={{ height: "42px", width: "auto", objectFit: "contain", flexShrink: 0 }} />
-              <span className="font-semibold text-[#003479] text-base tracking-tight hidden sm:inline-block">Tecnocontrol TI</span>
-            </div>
+    <div className="min-h-screen bg-[#F7F8FA] pb-16" style={{ fontFamily: "Inter, sans-serif" }}>
+      {/* Unified Navbar */}
+      <AdminNav currentTab="computadoras" />
 
-            {/* Desktop Nav Pills */}
-            <div className="hidden md:flex items-center gap-2">
-              <Link
-                href="/admin"
-                className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-[#37312E]/70 hover:text-[#003479] hover:bg-[#FAFAFA] border border-transparent hover:border-[#EAEAEA] transition-all"
-              >
-                Historial de Tickets
-              </Link>
-              <Link
-                href="/admin/computadoras"
-                className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-[#003479] text-white shadow-xs transition-all"
-              >
-                Entrada de Computadoras
-              </Link>
-              <Link
-                href="/admin/telefonos"
-                className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-[#37312E]/70 hover:text-[#003479] hover:bg-[#FAFAFA] border border-transparent hover:border-[#EAEAEA] transition-all"
-              >
-                Entrada de Teléfonos
-              </Link>
-            </div>
+      <main className="max-w-[1400px] mx-auto px-4 sm:px-6 py-6 sm:py-10">
+        {/* API Error */}
+        {apiError && (
+          <div className="mb-5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs flex items-center justify-between gap-3 animate-fade-in">
+            <span>{apiError}</span>
+            <button onClick={() => setApiError(null)} className="text-red-700 hover:text-red-900 cursor-pointer font-bold shrink-0">✕</button>
           </div>
-
-          <div className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="text-xs font-medium text-[#37312E]/70 hover:text-[#003479] bg-[#FAFAFA] hover:bg-[#EAEAEA]/50 border border-[#EAEAEA] px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 shadow-xs"
-            >
-              <svg className="w-4 h-4 text-[#003479]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-              <span>Portal de Usuarios</span>
-            </Link>
-          </div>
-        </div>
-
-        {/* Mobile Sub-Navigation Bar */}
-        <div className="flex md:hidden border-t border-[#EAEAEA] px-6 py-2 bg-[#FBFBFB] overflow-x-auto gap-2">
-          <Link
-            href="/admin"
-            className="px-3 py-1 rounded-lg text-xs font-medium whitespace-nowrap text-[#37312E]/70 hover:text-[#003479] bg-white border border-[#EAEAEA]"
-          >
-            Historial
-          </Link>
-          <Link
-            href="/admin/computadoras"
-            className="px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap bg-[#003479] text-white"
-          >
-            Computadoras
-          </Link>
-          <Link
-            href="/admin/telefonos"
-            className="px-3 py-1 rounded-lg text-xs font-medium whitespace-nowrap text-[#37312E]/70 hover:text-[#003479] bg-white border border-[#EAEAEA]"
-          >
-            Teléfonos
-          </Link>
-        </div>
-      </nav>
-
-      <main className="max-w-[1400px] mx-auto px-6 py-8 sm:py-10">
+        )}
         {/* Header Title & Actions */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 animate-fade-in-up">
           <div>
@@ -840,11 +838,11 @@ export default function ComputadorasDashboard() {
         </div>
       </main>
 
-      {/* MODAL DE REGISTRO DE COMPUTADORA */}
+      {/* MODAL DE REGISTRO DE COMPUTADORA - Z-Index 9999 garantizado */}
       {isRegisterModalOpen && (
         <div
           id="modal-registro-computadora-backdrop"
-          className="fixed inset-0 z-[999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
+          className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
           onClick={(e) => {
             if (e.target === e.currentTarget) setIsRegisterModalOpen(false);
           }}
@@ -879,17 +877,22 @@ export default function ComputadorasDashboard() {
                       <label className="block text-xs font-semibold text-[#37312E]/80 uppercase tracking-widest mb-1.5">
                         Tipo de Equipo <span className="text-[#CA1224]">*</span>
                       </label>
-                      <select
-                        name="equipo"
-                        value={formData.equipo}
-                        onChange={handleInputChange}
-                        className="w-full px-3 py-2 border border-[#EAEAEA] rounded-lg bg-white text-sm text-[#37312E] focus:outline-none focus:border-[#003479]"
-                      >
-                        <option value="LAPTOP">LAPTOP</option>
-                        <option value="DESKTOP">DESKTOP</option>
-                        <option value="TODO EN UNO">TODO EN UNO (All-in-One)</option>
-                        <option value="SERVIDOR">SERVIDOR</option>
-                      </select>
+                      <div className="relative">
+                        <select
+                          name="equipo"
+                          value={formData.equipo}
+                          onChange={handleInputChange}
+                          className="w-full px-3.5 py-2.5 border border-[#EAEAEA] rounded-xl bg-white text-sm text-[#37312E] appearance-none cursor-pointer focus:outline-none focus:border-[#003479] focus:ring-1 focus:ring-[#003479]/20 transition-all pr-8 font-medium"
+                        >
+                          <option value="LAPTOP">LAPTOP</option>
+                          <option value="DESKTOP">DESKTOP</option>
+                          <option value="TODO EN UNO">TODO EN UNO (All-in-One)</option>
+                          <option value="SERVIDOR">SERVIDOR</option>
+                        </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-[#37312E]/50">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </div>
+                      </div>
                     </div>
 
                     <div>
@@ -902,7 +905,7 @@ export default function ComputadorasDashboard() {
                         value={formData.ns}
                         onChange={handleInputChange}
                         placeholder="Ej. DYM26J4"
-                        className={`w-full px-3 py-2 border rounded-lg bg-white text-sm text-[#37312E] uppercase font-mono tracking-wider focus:outline-none ${formErrors.ns ? "border-[#CA1224] bg-red-50/20" : "border-[#EAEAEA] focus:border-[#003479]"
+                        className={`w-full px-3.5 py-2.5 border rounded-xl bg-white text-sm text-[#37312E] uppercase font-mono tracking-wider focus:outline-none transition-all ${formErrors.ns ? "border-[#CA1224] bg-red-50/20" : "border-[#EAEAEA] focus:border-[#003479] focus:ring-1 focus:ring-[#003479]/20"
                           }`}
                       />
                       {formErrors.ns && (
@@ -922,20 +925,25 @@ export default function ComputadorasDashboard() {
                       <label className="block text-xs font-semibold text-[#37312E]/80 uppercase tracking-widest mb-1.5">
                         Marca <span className="text-[#CA1224]">*</span>
                       </label>
-                      <select
-                        name="marca"
-                        value={formData.marca}
-                        onChange={handleInputChange}
-                        className="w-full px-3 py-2 border border-[#EAEAEA] rounded-lg bg-white text-sm text-[#37312E] focus:outline-none focus:border-[#003479]"
-                      >
-                        <option value="DELL">DELL</option>
-                        <option value="HP">HP</option>
-                        <option value="LENOVO">LENOVO</option>
-                        <option value="APPLE">APPLE</option>
-                        <option value="ASUS">ASUS</option>
-                        <option value="ACER">ACER</option>
-                        <option value="OTRA">OTRA</option>
-                      </select>
+                      <div className="relative">
+                        <select
+                          name="marca"
+                          value={formData.marca}
+                          onChange={handleInputChange}
+                          className="w-full px-3.5 py-2.5 border border-[#EAEAEA] rounded-xl bg-white text-sm text-[#37312E] appearance-none cursor-pointer focus:outline-none focus:border-[#003479] focus:ring-1 focus:ring-[#003479]/20 transition-all pr-8 font-medium"
+                        >
+                          <option value="DELL">DELL</option>
+                          <option value="HP">HP</option>
+                          <option value="LENOVO">LENOVO</option>
+                          <option value="APPLE">APPLE</option>
+                          <option value="ASUS">ASUS</option>
+                          <option value="ACER">ACER</option>
+                          <option value="OTRA">OTRA</option>
+                        </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-[#37312E]/50">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </div>
+                      </div>
                     </div>
 
                     <div>
@@ -948,7 +956,7 @@ export default function ComputadorasDashboard() {
                         value={formData.modelo}
                         onChange={handleInputChange}
                         placeholder="Ej. LDC15250 o LATITUDE 5420"
-                        className={`w-full px-3 py-2 border rounded-lg bg-white text-sm text-[#37312E] uppercase focus:outline-none ${formErrors.modelo ? "border-[#CA1224] bg-red-50/20" : "border-[#EAEAEA] focus:border-[#003479]"
+                        className={`w-full px-3.5 py-2.5 border rounded-xl bg-white text-sm text-[#37312E] uppercase focus:outline-none transition-all ${formErrors.modelo ? "border-[#CA1224] bg-red-50/20" : "border-[#EAEAEA] focus:border-[#003479] focus:ring-1 focus:ring-[#003479]/20"
                           }`}
                       />
                       {formErrors.modelo && (
@@ -974,26 +982,31 @@ export default function ComputadorasDashboard() {
                         value={formData.procesador}
                         onChange={handleInputChange}
                         placeholder="Ej. INTEL CORE I5 1334"
-                        className="w-full px-3 py-2 border border-[#EAEAEA] rounded-lg bg-white text-sm text-[#37312E] uppercase focus:outline-none focus:border-[#003479]"
+                        className="w-full px-3.5 py-2.5 border border-[#EAEAEA] rounded-xl bg-white text-sm text-[#37312E] uppercase focus:outline-none focus:border-[#003479] focus:ring-1 focus:ring-[#003479]/20 transition-all"
                       />
                     </div>
 
                     <div>
                       <label className="block text-xs font-semibold text-[#37312E]/80 uppercase tracking-widest mb-1.5">
-                        RAM
+                        Memoria RAM
                       </label>
-                      <select
-                        name="ram"
-                        value={formData.ram}
-                        onChange={handleInputChange}
-                        className="w-full px-3 py-2 border border-[#EAEAEA] rounded-lg bg-white text-sm text-[#37312E] focus:outline-none focus:border-[#003479]"
-                      >
-                        <option value="8GB">8GB</option>
-                        <option value="16GB">16GB</option>
-                        <option value="32GB">32GB</option>
-                        <option value="64GB">64GB</option>
-                        <option value="4GB">4GB</option>
-                      </select>
+                      <div className="relative">
+                        <select
+                          name="ram"
+                          value={formData.ram}
+                          onChange={handleInputChange}
+                          className="w-full px-3.5 py-2.5 border border-[#EAEAEA] rounded-xl bg-white text-sm text-[#37312E] appearance-none cursor-pointer focus:outline-none focus:border-[#003479] focus:ring-1 focus:ring-[#003479]/20 transition-all pr-8"
+                        >
+                          <option value="8GB">8GB</option>
+                          <option value="16GB">16GB</option>
+                          <option value="32GB">32GB</option>
+                          <option value="64GB">64GB</option>
+                          <option value="4GB">4GB</option>
+                        </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-[#37312E]/50">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </div>
+                      </div>
                     </div>
 
                     <div>
@@ -1006,7 +1019,7 @@ export default function ComputadorasDashboard() {
                         value={formData.discoDuro}
                         onChange={handleInputChange}
                         placeholder="Ej. SSD 512GB"
-                        className="w-full px-3 py-2 border border-[#EAEAEA] rounded-lg bg-white text-sm text-[#37312E] uppercase focus:outline-none focus:border-[#003479]"
+                        className="w-full px-3.5 py-2.5 border border-[#EAEAEA] rounded-xl bg-white text-sm text-[#37312E] uppercase focus:outline-none focus:border-[#003479] focus:ring-1 focus:ring-[#003479]/20 transition-all"
                       />
                     </div>
                   </div>
@@ -1022,17 +1035,22 @@ export default function ComputadorasDashboard() {
                       <label className="block text-xs font-semibold text-[#37312E]/80 uppercase tracking-widest mb-1.5">
                         Estatus del Equipo
                       </label>
-                      <select
-                        name="estatus"
-                        value={formData.estatus}
-                        onChange={handleInputChange}
-                        className="w-full px-3 py-2 border border-[#EAEAEA] rounded-lg bg-white text-sm text-[#37312E] focus:outline-none focus:border-[#003479]"
-                      >
-                        <option value="SIN ASIGNAR">SIN ASIGNAR</option>
-                        <option value="ASIGNADA">ASIGNADA</option>
-                        <option value="EN REPARACIÓN">EN REPARACIÓN</option>
-                        <option value="BAJA">BAJA</option>
-                      </select>
+                      <div className="relative">
+                        <select
+                          name="estatus"
+                          value={formData.estatus}
+                          onChange={handleInputChange}
+                          className="w-full px-3.5 py-2.5 border border-[#EAEAEA] rounded-xl bg-white text-sm text-[#37312E] appearance-none cursor-pointer focus:outline-none focus:border-[#003479] focus:ring-1 focus:ring-[#003479]/20 transition-all pr-8 font-medium"
+                        >
+                          <option value="SIN ASIGNAR">SIN ASIGNAR</option>
+                          <option value="ASIGNADA">ASIGNADA</option>
+                          <option value="EN REPARACIÓN">EN REPARACIÓN</option>
+                          <option value="BAJA">BAJA</option>
+                        </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-[#37312E]/50">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </div>
+                      </div>
                     </div>
 
                     <div>
@@ -1045,7 +1063,7 @@ export default function ComputadorasDashboard() {
                         value={formData.usuario}
                         onChange={handleInputChange}
                         placeholder="Ej. MAGALY CHAVEZ o N/D"
-                        className="w-full px-3 py-2 border border-[#EAEAEA] rounded-lg bg-white text-sm text-[#37312E] uppercase focus:outline-none focus:border-[#003479]"
+                        className="w-full px-3.5 py-2.5 border border-[#EAEAEA] rounded-xl bg-white text-sm text-[#37312E] uppercase focus:outline-none focus:border-[#003479] focus:ring-1 focus:ring-[#003479]/20 transition-all"
                       />
                     </div>
                   </div>
@@ -1054,7 +1072,7 @@ export default function ComputadorasDashboard() {
                 {/* Sección 5 */}
                 <div>
                   <label className="block text-xs font-semibold text-[#37312E]/80 uppercase tracking-widest mb-1.5">
-                    Observaciones
+                    Observaciones Técnicas
                   </label>
                   <input
                     type="text"
@@ -1062,7 +1080,7 @@ export default function ComputadorasDashboard() {
                     value={formData.observaciones}
                     onChange={handleInputChange}
                     placeholder="Ej. NUEVA LISTA PARA USAR / NUEVA EN USO / EN USO"
-                    className="w-full px-3 py-2 border border-[#EAEAEA] rounded-lg bg-white text-sm text-[#37312E] uppercase focus:outline-none focus:border-[#003479]"
+                    className="w-full px-3.5 py-2.5 border border-[#EAEAEA] rounded-xl bg-white text-sm text-[#37312E] uppercase focus:outline-none focus:border-[#003479] focus:ring-1 focus:ring-[#003479]/20 transition-all"
                   />
                 </div>
               </div>
@@ -1072,13 +1090,13 @@ export default function ComputadorasDashboard() {
                 <button
                   type="button"
                   onClick={() => setIsRegisterModalOpen(false)}
-                  className="px-5 py-2.5 rounded-xl border border-[#EAEAEA] text-sm font-medium text-[#37312E]/70 hover:bg-white cursor-pointer transition-colors"
+                  className="px-4 py-2.5 rounded-xl border border-[#EAEAEA] text-xs font-semibold text-[#37312E]/70 hover:bg-white cursor-pointer active:scale-95 transition-all"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-6 sm:px-7 py-2.5 rounded-xl bg-[#003479] hover:bg-[#00275C] text-sm font-medium text-white transition-all shadow-md cursor-pointer flex items-center gap-2 active:scale-98"
+                  className="px-6 py-2.5 rounded-xl bg-[#003479] hover:bg-[#00275C] text-xs font-semibold text-white transition-all shadow-md cursor-pointer flex items-center gap-2 active:scale-98"
                 >
                   <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
@@ -1229,148 +1247,169 @@ export default function ComputadorasDashboard() {
             <form onSubmit={handleUpdate} className="flex-1 overflow-y-auto p-6 space-y-4 text-xs">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block font-semibold text-[#37312E]/80 mb-1">Tipo de Equipo</label>
-                  <select
-                    value={editingEquipo.equipo}
-                    onChange={(e) => setEditingEquipo({ ...editingEquipo, equipo: e.target.value })}
-                    className="w-full p-2 border border-[#EAEAEA] rounded-lg bg-white"
-                  >
-                    <option value="LAPTOP">LAPTOP</option>
-                    <option value="DESKTOP">DESKTOP</option>
-                    <option value="TODO EN UNO">TODO EN UNO</option>
-                    <option value="SERVIDOR">SERVIDOR</option>
-                  </select>
+                  <label className="block text-xs font-semibold text-[#37312E]/80 uppercase tracking-widest mb-1.5">Tipo de Equipo</label>
+                  <div className="relative">
+                    <select
+                      value={editingEquipo.equipo}
+                      onChange={(e) => setEditingEquipo({ ...editingEquipo, equipo: e.target.value })}
+                      className="w-full px-3.5 py-2.5 border border-[#EAEAEA] rounded-xl bg-white text-sm text-[#37312E] appearance-none focus:outline-none focus:border-[#003479] focus:ring-1 focus:ring-[#003479]/20 transition-all pr-8"
+                    >
+                      <option value="LAPTOP">LAPTOP</option>
+                      <option value="DESKTOP">DESKTOP</option>
+                      <option value="TODO EN UNO">TODO EN UNO</option>
+                      <option value="SERVIDOR">SERVIDOR</option>
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-[#37312E]/50">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </div>
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-[#37312E]/80 mb-1">Número de Serie (NS)</label>
+                  <label className="block text-xs font-semibold text-[#37312E]/80 uppercase tracking-widest mb-1.5">Número de Serie (NS)</label>
                   <input
                     type="text"
                     required
                     value={editingEquipo.ns}
                     onChange={(e) => setEditingEquipo({ ...editingEquipo, ns: e.target.value.toUpperCase() })}
-                    className="w-full p-2 border border-[#EAEAEA] rounded-lg bg-white uppercase font-mono"
+                    className="w-full px-3.5 py-2.5 border border-[#EAEAEA] rounded-xl bg-white text-sm text-[#37312E] uppercase font-mono focus:outline-none focus:border-[#003479] focus:ring-1 focus:ring-[#003479]/20 transition-all"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block font-semibold text-[#37312E]/80 mb-1">Marca</label>
+                  <label className="block text-xs font-semibold text-[#37312E]/80 uppercase tracking-widest mb-1.5">Marca</label>
                   <input
                     type="text"
                     required
                     value={editingEquipo.marca}
                     onChange={(e) => setEditingEquipo({ ...editingEquipo, marca: e.target.value.toUpperCase() })}
-                    className="w-full p-2 border border-[#EAEAEA] rounded-lg bg-white uppercase"
+                    className="w-full px-3.5 py-2.5 border border-[#EAEAEA] rounded-xl bg-white text-sm text-[#37312E] uppercase focus:outline-none focus:border-[#003479] focus:ring-1 focus:ring-[#003479]/20 transition-all"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-[#37312E]/80 mb-1">Modelo</label>
+                  <label className="block text-xs font-semibold text-[#37312E]/80 uppercase tracking-widest mb-1.5">Modelo</label>
                   <input
                     type="text"
                     required
                     value={editingEquipo.modelo}
                     onChange={(e) => setEditingEquipo({ ...editingEquipo, modelo: e.target.value.toUpperCase() })}
-                    className="w-full p-2 border border-[#EAEAEA] rounded-lg bg-white uppercase"
+                    className="w-full px-3.5 py-2.5 border border-[#EAEAEA] rounded-xl bg-white text-sm text-[#37312E] uppercase focus:outline-none focus:border-[#003479] focus:ring-1 focus:ring-[#003479]/20 transition-all"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block font-semibold text-[#37312E]/80 mb-1">Procesador</label>
+                  <label className="block text-xs font-semibold text-[#37312E]/80 uppercase tracking-widest mb-1.5">Procesador</label>
                   <input
                     type="text"
                     value={editingEquipo.procesador}
                     onChange={(e) => setEditingEquipo({ ...editingEquipo, procesador: e.target.value.toUpperCase() })}
-                    className="w-full p-2 border border-[#EAEAEA] rounded-lg bg-white uppercase"
+                    className="w-full px-3.5 py-2.5 border border-[#EAEAEA] rounded-xl bg-white text-sm text-[#37312E] uppercase focus:outline-none focus:border-[#003479] focus:ring-1 focus:ring-[#003479]/20 transition-all"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-[#37312E]/80 mb-1">RAM</label>
-                  <select
-                    value={editingEquipo.ram}
-                    onChange={(e) => setEditingEquipo({ ...editingEquipo, ram: e.target.value })}
-                    className="w-full p-2 border border-[#EAEAEA] rounded-lg bg-white"
-                  >
-                    <option value="8GB">8GB</option>
-                    <option value="16GB">16GB</option>
-                    <option value="32GB">32GB</option>
-                    <option value="64GB">64GB</option>
-                    <option value="4GB">4GB</option>
-                  </select>
+                  <label className="block text-xs font-semibold text-[#37312E]/80 uppercase tracking-widest mb-1.5">RAM</label>
+                  <div className="relative">
+                    <select
+                      value={editingEquipo.ram}
+                      onChange={(e) => setEditingEquipo({ ...editingEquipo, ram: e.target.value })}
+                      className="w-full px-3.5 py-2.5 border border-[#EAEAEA] rounded-xl bg-white text-sm text-[#37312E] appearance-none focus:outline-none focus:border-[#003479] focus:ring-1 focus:ring-[#003479]/20 transition-all pr-8"
+                    >
+                      <option value="8GB">8GB</option>
+                      <option value="16GB">16GB</option>
+                      <option value="32GB">32GB</option>
+                      <option value="64GB">64GB</option>
+                      <option value="4GB">4GB</option>
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-[#37312E]/50">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </div>
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-[#37312E]/80 mb-1">Disco Duro</label>
+                  <label className="block text-xs font-semibold text-[#37312E]/80 uppercase tracking-widest mb-1.5">Disco Duro</label>
                   <input
                     type="text"
                     value={editingEquipo.discoDuro}
                     onChange={(e) => setEditingEquipo({ ...editingEquipo, discoDuro: e.target.value.toUpperCase() })}
-                    className="w-full p-2 border border-[#EAEAEA] rounded-lg bg-white uppercase"
+                    className="w-full px-3.5 py-2.5 border border-[#EAEAEA] rounded-xl bg-white text-sm text-[#37312E] uppercase focus:outline-none focus:border-[#003479] focus:ring-1 focus:ring-[#003479]/20 transition-all"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block font-semibold text-[#37312E]/80 mb-1">Estatus</label>
-                  <select
-                    value={editingEquipo.estatus}
-                    onChange={(e) => {
-                      const val = e.target.value as any;
-                      setEditingEquipo({
-                        ...editingEquipo,
-                        estatus: val,
-                        ...(val === "SIN ASIGNAR" && editingEquipo.usuario !== "N/D" ? { usuario: "N/D" } : {})
-                      });
-                    }}
-                    className="w-full p-2 border border-[#EAEAEA] rounded-lg bg-white"
-                  >
-                    <option value="SIN ASIGNAR">SIN ASIGNAR</option>
-                    <option value="ASIGNADA">ASIGNADA</option>
-                    <option value="EN REPARACIÓN">EN REPARACIÓN</option>
-                    <option value="BAJA">BAJA</option>
-                  </select>
+                  <label className="block text-xs font-semibold text-[#37312E]/80 uppercase tracking-widest mb-1.5">Estatus</label>
+                  <div className="relative">
+                    <select
+                      value={editingEquipo.estatus}
+                      onChange={(e) => {
+                        const val = e.target.value as Computadora["estatus"];
+                        setEditingEquipo({
+                          ...editingEquipo,
+                          estatus: val,
+                          ...(val === "SIN ASIGNAR" && editingEquipo.usuario !== "N/D" ? { usuario: "N/D" } : {})
+                        });
+                      }}
+                      className="w-full px-3.5 py-2.5 border border-[#EAEAEA] rounded-xl bg-white text-sm text-[#37312E] appearance-none focus:outline-none focus:border-[#003479] focus:ring-1 focus:ring-[#003479]/20 transition-all pr-8"
+                    >
+                      <option value="SIN ASIGNAR">SIN ASIGNAR</option>
+                      <option value="ASIGNADA">ASIGNADA</option>
+                      <option value="EN REPARACIÓN">EN REPARACIÓN</option>
+                      <option value="BAJA">BAJA</option>
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-[#37312E]/50">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </div>
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-[#37312E]/80 mb-1">Usuario Asignado</label>
+                  <label className="block text-xs font-semibold text-[#37312E]/80 uppercase tracking-widest mb-1.5">Usuario Asignado</label>
                   <input
                     type="text"
                     value={editingEquipo.usuario}
                     onChange={(e) => setEditingEquipo({ ...editingEquipo, usuario: e.target.value.toUpperCase() })}
-                    className="w-full p-2 border border-[#EAEAEA] rounded-lg bg-white uppercase"
+                    className="w-full px-3.5 py-2.5 border border-[#EAEAEA] rounded-xl bg-white text-sm text-[#37312E] uppercase focus:outline-none focus:border-[#003479] focus:ring-1 focus:ring-[#003479]/20 transition-all"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block font-semibold text-[#37312E]/80 mb-1">Observaciones</label>
+                <label className="block text-xs font-semibold text-[#37312E]/80 uppercase tracking-widest mb-1.5">Observaciones</label>
                 <input
                   type="text"
                   value={editingEquipo.observaciones}
                   onChange={(e) => setEditingEquipo({ ...editingEquipo, observaciones: e.target.value.toUpperCase() })}
-                  className="w-full p-2 border border-[#EAEAEA] rounded-lg bg-white uppercase"
+                  className="w-full px-3.5 py-2.5 border border-[#EAEAEA] rounded-xl bg-white text-sm text-[#37312E] uppercase focus:outline-none focus:border-[#003479] focus:ring-1 focus:ring-[#003479]/20 transition-all"
                 />
               </div>
 
-              <div className="pt-3 border-t border-[#EAEAEA] flex items-center justify-end gap-2 sticky bottom-0 bg-white pb-1">
+              <div className="pt-4 border-t border-[#EAEAEA] flex items-center justify-end gap-2.5 sticky bottom-0 bg-white pb-1">
                 <button
                   type="button"
                   onClick={() => setEditingEquipo(null)}
-                  className="px-4 py-2 rounded-xl border border-[#EAEAEA] font-medium text-[#37312E]/70 hover:bg-[#FAFAFA] cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl border border-[#EAEAEA] text-xs font-semibold text-[#37312E]/70 hover:bg-[#FAFAFA] cursor-pointer active:scale-95 transition-all"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-[#003479] text-white font-medium hover:bg-[#00275C] cursor-pointer shadow-xs active:scale-95 flex items-center gap-1.5"
+                  className="px-6 py-2.5 rounded-xl bg-[#003479] hover:bg-[#00275C] text-xs font-semibold text-white transition-all shadow-md cursor-pointer flex items-center gap-2 active:scale-98"
                 >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
                   </svg>
                   <span>Guardar Cambios</span>
