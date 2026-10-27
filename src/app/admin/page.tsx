@@ -338,7 +338,7 @@ function AdminDashboardContent() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 animate-fade-in-up">
           <div>
-            <span className="text-[11px] uppercase tracking-widest font-semibold text-[#003479] bg-[#003479]/10 px-2.5 py-0.5 rounded-full inline-block mb-1.5">Mesa de Ayuda</span>
+            <span className="text-[11px] uppercase tracking-widest font-semibold text-[#003479] bg-[#003479]/10 px-2.5 py-0.5 rounded-full inline-block mb-1.5">Sistema de Tickets</span>
             <h1 className="text-xl sm:text-2xl font-semibold text-[#003479] tracking-tight">Historial de Solicitudes</h1>
             <p className="text-sm text-[#37312E]/60 mt-0.5">Monitoreo, atención técnica y seguimiento a los tickets.</p>
           </div>

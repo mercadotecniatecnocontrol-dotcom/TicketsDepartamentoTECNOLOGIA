@@ -326,11 +326,8 @@ function HomeContent() {
       <main className="max-w-2xl mx-auto px-4 sm:px-6 py-6 sm:py-10 animate-fade-in-up">
         {/* Header */}
         <header className="mb-6 text-center">
-          <span className="inline-block text-xs uppercase tracking-widest font-semibold text-[#003479] bg-[#003479]/10 px-3 py-1 rounded-full mb-3">
-            Mesa de Ayuda TI
-          </span>
           <h1 className="text-2xl sm:text-3xl font-semibold text-[#003479] tracking-tight mb-2">
-            {activeTab === "crear" ? "Soporte Técnico" : "Consulta de Solicitud"}
+            {activeTab === "crear" ? "Levantamiento de Tickets" : "Consulta de Solicitud"}
           </h1>
           <p className="text-[#37312E]/60 text-sm max-w-md mx-auto">
             {activeTab === "crear"

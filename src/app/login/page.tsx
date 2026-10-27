@@ -143,7 +143,7 @@ function LoginContent() {
               Tecnocontrol
             </span>
             <span className="text-[10px] text-[#37312E]/60 uppercase tracking-widest font-medium">
-              Mesa de Ayuda
+              Sistema de Tickets
             </span>
           </div>
         </Link>
@@ -414,7 +414,7 @@ function LoginContent() {
 
       {/* Footer */}
       <footer className="w-full border-t border-[#EAEAEA] bg-white py-3 px-6 text-center text-xs text-[#37312E]/50">
-        Tecnocontrol TI &copy; {new Date().getFullYear()} &mdash; Sistema de Mesa de Ayuda y Control de Activos
+        Tecnocontrol TI &copy; {new Date().getFullYear()} &mdash; Sistema de Tickets y Control de Activos
       </footer>
     </div>
   );
