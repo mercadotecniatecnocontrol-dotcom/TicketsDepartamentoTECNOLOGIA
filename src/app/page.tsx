@@ -195,13 +195,43 @@ function HomeContent() {
     }
   };
 
-  const copyToClipboard = (text: string) => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(text);
+  const copyToClipboard = async (text: string) => {
+    let success = false;
+    // 1. Intentar con Clipboard API moderna (disponible en localhost o HTTPS)
+    if (typeof window !== "undefined" && navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(text);
+        success = true;
+      } catch (err) {
+        console.warn("Fallo navigator.clipboard, recurriendo a fallback:", err);
+      }
+    }
+
+    // 2. Fallback universal con textarea temporal y execCommand (funciona en HTTP, IPs de red local y todos los navegadores)
+    if (!success && typeof document !== "undefined") {
+      try {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-999999px";
+        textArea.style.top = "-999999px";
+        textArea.setAttribute("readonly", "");
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        success = document.execCommand("copy");
+        document.body.removeChild(textArea);
+      } catch (err) {
+        console.error("Error al copiar al portapapeles:", err);
+      }
+    }
+
+    if (success) {
       setCopiedFolio(true);
       setTimeout(() => setCopiedFolio(false), 2500);
     }
   };
+
 
   const dept = DEPARTAMENTO_INFO[departamento];
 
@@ -360,13 +390,39 @@ function HomeContent() {
               <h2 className="text-lg sm:text-xl font-semibold text-[#003479] mb-1">¡Solicitud Generada!</h2>
               <p className="text-xs text-[#37312E]/60 mb-4">Su ticket fue registrado con el folio:</p>
               <div className="bg-[#F7F8FA] border border-[#EAEAEA] rounded-xl p-4 mb-5">
-                <span className="font-mono text-2xl font-bold text-[#003479] tracking-wider block">{createdTicketId}</span>
+                <span className="font-mono text-2xl font-bold text-[#003479] tracking-wider block select-all">
+                  {createdTicketId}
+                </span>
                 <button
                   type="button"
                   onClick={() => copyToClipboard(createdTicketId)}
-                  className="mt-2 text-xs font-semibold text-[#003479] hover:underline inline-flex items-center gap-1 cursor-pointer"
+                  className={`mt-2.5 px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs ${
+                    copiedFolio
+                      ? "bg-emerald-600 text-white shadow-xs"
+                      : "bg-white border border-[#EAEAEA] text-[#003479] hover:bg-zinc-50 hover:border-[#003479]/40 active:scale-95"
+                  }`}
+                  title="Copiar folio al portapapeles"
                 >
-                  {copiedFolio ? "✓ Folio Copiado" : "📋 Copiar Folio"}
+                  {copiedFolio ? (
+                    <>
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span>¡Folio Copiado!</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3.5 h-3.5 text-[#003479]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                        />
+                      </svg>
+                      <span>Copiar Folio</span>
+                    </>
+                  )}
                 </button>
               </div>
               <div className="flex flex-col gap-2.5">
@@ -658,10 +714,20 @@ function HomeContent() {
               <div className="border border-[#003479]/20 rounded-2xl bg-[#FBFBFB] p-5 sm:p-6 space-y-4 animate-fade-in shadow-xs">
                 {/* Header card */}
                 <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[#EAEAEA]">
-                  <div className="flex items-center gap-2.5">
-                    <span className="font-mono text-base font-bold text-[#003479] bg-[#003479]/10 px-2.5 py-1 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-base font-bold text-[#003479] bg-[#003479]/10 px-2.5 py-1 rounded-lg select-all">
                       {consultTicket.id}
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(consultTicket.id)}
+                      className="p-1.5 rounded-lg text-[#37312E]/50 hover:text-[#003479] hover:bg-[#003479]/10 transition-colors cursor-pointer"
+                      title="Copiar folio al portapapeles"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                    </button>
                     <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${priorityBadge(consultTicket.priority)}`}>
                       Prioridad {consultTicket.priority}
                     </span>

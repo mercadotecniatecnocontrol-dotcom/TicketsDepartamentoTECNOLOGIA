@@ -67,6 +67,35 @@ function AdminDashboardContent() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [exportSuccess, setExportSuccess] = useState<string | null>(null);
   const [createdFolioAlert, setCreatedFolioAlert] = useState<string | null>(null);
+  const [copiedAlertFolio, setCopiedAlertFolio] = useState(false);
+
+  const copyAlertFolio = async (text: string) => {
+    let success = false;
+    if (typeof window !== "undefined" && navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(text);
+        success = true;
+      } catch {}
+    }
+    if (!success && typeof document !== "undefined") {
+      try {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-999999px";
+        textArea.setAttribute("readonly", "");
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        success = document.execCommand("copy");
+        document.body.removeChild(textArea);
+      } catch {}
+    }
+    if (success) {
+      setCopiedAlertFolio(true);
+      setTimeout(() => setCopiedAlertFolio(false), 2000);
+    }
+  };
   const [newTicketForm, setNewTicketForm] = useState(INITIAL_NEW_TICKET_FORM);
   const [createErrors, setCreateErrors] = useState<{ user?: string; title?: string; detalles?: string; ip?: string }>({});
   const [saving, setSaving] = useState(false);
@@ -367,7 +396,16 @@ function AdminDashboardContent() {
               <span className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shrink-0">✓</span>
               <div>
                 <p className="font-semibold text-sm">¡Solicitud registrada!</p>
-                <p className="text-xs text-emerald-700/80">Folio: <span className="font-mono font-bold">{createdFolioAlert}</span> — estado Pendiente.</p>
+                <p className="text-xs text-emerald-700/80 flex items-center gap-2 mt-0.5">
+                  <span>Folio: <strong className="font-mono font-bold select-all">{createdFolioAlert}</strong> — estado Pendiente.</span>
+                  <button
+                    type="button"
+                    onClick={() => copyAlertFolio(createdFolioAlert)}
+                    className="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-100 hover:bg-emerald-200 text-emerald-800 transition-colors inline-flex items-center gap-1 cursor-pointer"
+                  >
+                    {copiedAlertFolio ? "✓ Copiado" : "📋 Copiar"}
+                  </button>
+                </p>
               </div>
             </div>
             <button type="button" onClick={() => setCreatedFolioAlert(null)} className="text-emerald-700 hover:text-emerald-900 font-bold cursor-pointer shrink-0">✕</button>

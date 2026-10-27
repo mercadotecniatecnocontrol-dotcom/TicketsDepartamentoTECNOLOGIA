@@ -1,5 +1,22 @@
 [
   {
+    "id": "T-100955",
+    "title": "e",
+    "user": "e",
+    "status": "open",
+    "date": "Hoy, 11:11",
+    "priority": "Media",
+    "departamento": "Sistemas",
+    "sucursal": "Chihuahua",
+    "ip": "",
+    "detalles": "e",
+    "fechaInicio": "2026-10-27",
+    "fechaEsperada": "",
+    "respuesta": "",
+    "evidencias": [],
+    "created_at": "2026-10-27T17:11:40.978Z"
+  },
+  {
     "id": "T-460237",
     "title": "Soy una capa 8",
     "user": "Alan Sanchez",

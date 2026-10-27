@@ -75,11 +75,6 @@ function LoginContent() {
     }
   };
 
-  const handleQuickFill = () => {
-    setPassword("admin123");
-    setError(null);
-  };
-
   const deptMeta: Record<
     Departamento,
     {
@@ -319,20 +314,9 @@ function LoginContent() {
 
             {/* Paso 3: Password Input */}
             <div className="pt-1">
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-[11px] font-semibold text-[#37312E]/70 uppercase tracking-widest">
-                  3. Contraseña de Acceso <span className="text-[#CA1224]">*</span>
-                </label>
-                {/* Quick Fill Demo Button */}
-                <button
-                  type="button"
-                  onClick={handleQuickFill}
-                  className="text-[10px] font-medium text-[#003479] hover:underline cursor-pointer flex items-center gap-1"
-                  title="Rellena la contraseña maestra para pruebas rápidas"
-                >
-                  <span>🔑 Usar: <strong>admin123</strong></span>
-                </button>
-              </div>
+              <label className="block text-[11px] font-semibold text-[#37312E]/70 uppercase tracking-widest mb-1.5">
+                3. Contraseña de Acceso <span className="text-[#CA1224]">*</span>
+              </label>
 
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#37312E]/40">
@@ -364,11 +348,6 @@ function LoginContent() {
                     </svg>
                   )}
                 </button>
-              </div>
-
-              {/* Password hints */}
-              <div className="flex items-center justify-between text-[11px] text-[#37312E]/50 mt-1.5 px-0.5">
-                <span>Contraseñas válidas: <code className="font-mono bg-zinc-100 px-1 py-0.5 rounded text-zinc-700">admin123</code> o <code className="font-mono bg-zinc-100 px-1 py-0.5 rounded text-zinc-700">{selectedUser.toLowerCase()}123</code></span>
               </div>
             </div>
 

@@ -13,13 +13,6 @@ export interface UserAccount {
   allowedPasswords: string[];
 }
 
-/**
- * Catálogo oficial de usuarios autorizados por departamento:
- * - Sistemas: Kevin y Alan
- * - Arquitectura: Aldo
- * - Marketing: Glen y Erika
- * - Gerencia: Glen
- */
 export const USERS: UserAccount[] = [
   // Sistemas
   {
@@ -29,7 +22,7 @@ export const USERS: UserAccount[] = [
     email: "kevin@tecnocontrol.com.mx",
     role: "admin",
     cargo: "Soporte TI e Infraestructura",
-    allowedPasswords: ["kevin123", "admin123", "sistemas123", "sistemas"],
+    allowedPasswords: ["Desarrollador@@2026."],
   },
   {
     id: "usr-alan-sistemas",
@@ -38,7 +31,7 @@ export const USERS: UserAccount[] = [
     email: "alan@tecnocontrol.com.mx",
     role: "admin",
     cargo: "Soporte TI y Redes",
-    allowedPasswords: ["alan123", "admin123", "sistemas123", "sistemas"],
+    allowedPasswords: ["Sistemas@@1."],
   },
   // Arquitectura
   {
@@ -48,7 +41,7 @@ export const USERS: UserAccount[] = [
     email: "aldo@tecnocontrol.com.mx",
     role: "departamento",
     cargo: "Arquitectura y Mantenimiento",
-    allowedPasswords: ["aldo123", "admin123", "arquitectura123", "arquitectura"],
+    allowedPasswords: ["AS250599."],
   },
   // Marketing
   {
@@ -58,7 +51,7 @@ export const USERS: UserAccount[] = [
     email: "glen@tecnocontrol.com.mx",
     role: "departamento",
     cargo: "Marketing y Comunicación",
-    allowedPasswords: ["glen123", "admin123", "marketing123", "marketing"],
+    allowedPasswords: ["TecnoControl@@2026."],
   },
   {
     id: "usr-erika-marketing",
@@ -67,7 +60,7 @@ export const USERS: UserAccount[] = [
     email: "erika@tecnocontrol.com.mx",
     role: "departamento",
     cargo: "Diseño Gráfico y Publicidad",
-    allowedPasswords: ["erika123", "admin123", "marketing123", "marketing"],
+    allowedPasswords: ["Eriso139"],
   },
   // Gerencia
   {
@@ -77,7 +70,7 @@ export const USERS: UserAccount[] = [
     email: "glen.gerencia@tecnocontrol.com.mx",
     role: "admin",
     cargo: "Dirección General y Gerencia",
-    allowedPasswords: ["glen123", "admin123", "gerencia123", "gerencia"],
+    allowedPasswords: ["Admin2027."],
   },
 ];
 
@@ -133,9 +126,9 @@ export async function authenticateUser(
     };
   }
 
-  const cleanPassword = (password || "").trim().toLowerCase();
+  const cleanPassword = (password || "").trim();
   const isValidPassword = userAccount.allowedPasswords.some(
-    (p) => p.toLowerCase() === cleanPassword
+    (p) => p === cleanPassword
   );
 
   if (!isValidPassword) {

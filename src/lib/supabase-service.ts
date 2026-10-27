@@ -93,11 +93,6 @@ export function normalizeTelefono(row: any): TelefonoRow {
     created_at: row.created_at,
   };
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
-
-// ============================================================================
-// TICKETS SERVICE
-// ============================================================================
 
 export async function getTickets(): Promise<TicketRow[]> {
   if (isSupabaseConfigured()) {
