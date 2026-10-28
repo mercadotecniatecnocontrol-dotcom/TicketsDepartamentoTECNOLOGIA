@@ -21,7 +21,7 @@ export const USERS: UserAccount[] = [
     departamento: "Sistemas",
     email: "kevin@tecnocontrol.com.mx",
     role: "admin",
-    cargo: "Soporte TI e Infraestructura",
+    cargo: "Desarrollador de Software",
     allowedPasswords: ["Desarrollador@@2026."],
   },
   {
@@ -30,7 +30,7 @@ export const USERS: UserAccount[] = [
     departamento: "Sistemas",
     email: "alan@tecnocontrol.com.mx",
     role: "admin",
-    cargo: "Soporte TI y Redes",
+    cargo: "Soporte TI",
     allowedPasswords: ["Sistemas@@1."],
   },
   // Arquitectura
@@ -43,7 +43,6 @@ export const USERS: UserAccount[] = [
     cargo: "Arquitectura y Mantenimiento",
     allowedPasswords: ["AS250599."],
   },
-  // Marketing
   {
     id: "usr-glen-marketing",
     nombre: "Glen",
@@ -62,7 +61,6 @@ export const USERS: UserAccount[] = [
     cargo: "Diseño Gráfico y Publicidad",
     allowedPasswords: ["Eriso139"],
   },
-  // Gerencia
   {
     id: "usr-glen-gerencia",
     nombre: "Glen",
@@ -74,23 +72,14 @@ export const USERS: UserAccount[] = [
   },
 ];
 
-/**
- * Obtiene la lista de usuarios pertenecientes a un departamento dado.
- */
 export function getUsersByDepartment(departamento: Departamento): UserAccount[] {
   return USERS.filter((u) => u.departamento === departamento);
 }
 
-/**
- * Busca un usuario por su identificador único.
- */
 export function getUserById(id: string): UserAccount | undefined {
   return USERS.find((u) => u.id === id);
 }
 
-/**
- * Valida las credenciales de un usuario específico dentro de un departamento.
- */
 export async function authenticateUser(
   departamento: string,
   usuarioNombre: string,

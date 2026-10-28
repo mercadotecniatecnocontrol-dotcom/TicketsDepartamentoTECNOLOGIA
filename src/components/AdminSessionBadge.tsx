@@ -209,7 +209,10 @@ export default function AdminSessionBadge() {
                               <span className="w-6 h-6 rounded-full bg-zinc-100 text-zinc-700 flex items-center justify-center font-bold text-[11px] shrink-0">
                                 {u.nombre.charAt(0)}
                               </span>
-                              <span className="font-semibold text-xs leading-tight truncate">{u.nombre}</span>
+                              <div className="min-w-0">
+                                <span className="font-semibold text-xs leading-tight truncate block">{u.nombre}</span>
+                                <span className="text-[10px] text-[#37312E]/60 truncate block leading-tight">{u.cargo}</span>
+                              </div>
                             </div>
 
                             {isCurrent ? (
