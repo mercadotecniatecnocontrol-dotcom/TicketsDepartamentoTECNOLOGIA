@@ -76,7 +76,9 @@ export async function playUserAlarm(userName?: string | null, forcePlay = false)
       activeAudioInstance.currentTime = 0;
     }
 
-    const audio = new Audio(audioUrl);
+    const baseUrl = getUserAudioUrl(userName);
+    // Añadimos parámetro de tiempo para evitar que el navegador reproduzca audio antiguo en caché
+    const audio = new Audio(`${baseUrl}?t=${Date.now()}`);
     audio.volume = Math.max(0, Math.min(1, volume));
     activeAudioInstance = audio;
 
@@ -104,9 +106,10 @@ export function stopAlarm(): void {
 /**
  * Determina si debe sonar la alarma para el usuario actual ante un ticket entrante.
  * Regla:
- * - Si el ticket va dirigido específicamente a este usuario -> ¡SUENA su alarma!
- * - Si el usuario es 'admin' (Alan, Kevin, Glen Gerencia), le suena cualquier ticket.
- * - Si es usuario de departamento (Aldo, Erika, Glen Marketing), solo si el departamento coincide.
+ * - Si el ticket va dirigido específicamente a un usuario -> ¡SOLO le suena su alarma a ese usuario!
+ * - Si el ticket va dirigido a otro usuario en particular -> NO le suena a este usuario.
+ * - Si el ticket no tiene destinatario específico (general o sin asignar):
+ *   -> le suena únicamente a los usuarios del departamento correspondiente.
  */
 export function shouldAlarmForUser(
   ticketDepartamento: string,
@@ -117,23 +120,36 @@ export function shouldAlarmForUser(
 ): boolean {
   if (!userRole) return false;
 
-  // 1. Si el ticket está dirigido específicamente a este usuario
-  if (asignadoA && currentUserName) {
-    const cleanAsignado = asignadoA.trim().toLowerCase();
-    const cleanCurrent = currentUserName.trim().toLowerCase();
-    if (cleanAsignado.includes(cleanCurrent) || cleanCurrent.includes(cleanAsignado)) {
-      return true;
-    }
+  const normalize = (str?: string | null) =>
+    (str || "")
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+
+  const cleanAsignado = normalize(asignadoA);
+  const cleanCurrent = normalize(currentUserName);
+  const cleanTicket = normalize(ticketDepartamento);
+  const cleanUserDept = normalize(userDepartamento);
+
+  // 1. Si el ticket está dirigido específicamente a alguien
+  if (
+    cleanAsignado &&
+    cleanAsignado !== "todos" &&
+    cleanAsignado !== "todo el equipo" &&
+    cleanAsignado !== "general" &&
+    cleanAsignado !== "sin asignar"
+  ) {
+    if (!cleanCurrent) return false;
+    // ÚNICAMENTE suena si coincide con el usuario asignado
+    return cleanAsignado.includes(cleanCurrent) || cleanCurrent.includes(cleanAsignado);
   }
 
-  // 2. Si el usuario es 'admin'
-  if (userRole === "admin") return true;
+  // 2. Si el ticket no tiene usuario específico (es para todo el departamento):
+  // Solo le suena a los integrantes de ese departamento
+  if (cleanTicket && cleanUserDept && cleanTicket === cleanUserDept) {
+    return true;
+  }
 
-  // 3. Si es usuario de departamento
-  if (!userDepartamento || !ticketDepartamento) return false;
-
-  const cleanTicket = ticketDepartamento.trim().toLowerCase();
-  const cleanUser = userDepartamento.trim().toLowerCase();
-
-  return cleanTicket === cleanUser;
+  return false;
 }

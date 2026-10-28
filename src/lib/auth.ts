@@ -33,7 +33,6 @@ export const USERS: UserAccount[] = [
     cargo: "Soporte TI",
     allowedPasswords: ["Sistemas@@1."],
   },
-  // Arquitectura
   {
     id: "usr-aldo-arquitectura",
     nombre: "Aldo",

@@ -319,7 +319,7 @@ export default function AdminSessionBadge() {
                   Confirmar Cambio de Usuario
                 </h3>
                 <p className="text-xs text-[#37312E]/70 mt-1 leading-relaxed">
-                  Ingresa la contraseña de <strong>{targetUser.nombre}</strong> para acceder al departamento de{" "}
+                  Ingresa la contraseña de <strong>{targetUser.nombre}</strong> ({targetUser.cargo}) para acceder al departamento de{" "}
                   <strong>{targetUser.departamento}</strong>.
                 </p>
               </div>
