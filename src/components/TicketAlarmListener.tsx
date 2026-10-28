@@ -7,9 +7,7 @@ import {
   playUserAlarm,
   stopAlarm,
   shouldAlarmForUser,
-  getUserAudioUrl,
-  getSoundSettings,
-  saveSoundSettings,
+  unlockAudioContext,
 } from "@/lib/sound-alerts";
 
 interface IncomingTicketNotice {
@@ -25,60 +23,91 @@ export default function TicketAlarmListener() {
   const { user, isAuthenticated } = useAuth();
   const [activeAlert, setActiveAlert] = useState<IncomingTicketNotice | null>(null);
   const [soundBlocked, setSoundBlocked] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState<
+    NotificationPermission | "unsupported"
+  >("default");
+  const [dismissedPermissionPrompt, setDismissedPermissionPrompt] = useState(false);
 
   const knownTicketIdsRef = useRef<Set<string>>(new Set());
   const initialFetchDoneRef = useRef(false);
 
-  // Solicitar permiso de notificaciones del navegador si el usuario lo desea
-  const requestDesktopNotification = useCallback(async () => {
+  // Consultar estado de permisos de notificación al cargar
+  useEffect(() => {
     if (typeof window !== "undefined" && "Notification" in window) {
-      if (Notification.permission === "default") {
-        try {
-          await Notification.requestPermission();
-        } catch {}
-      }
+      setNotificationPermission(Notification.permission);
+    } else {
+      setNotificationPermission("unsupported");
     }
   }, []);
+
+  // Solicitar permiso de notificaciones de escritorio
+  const handleRequestNotifications = async () => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      try {
+        const perm = await Notification.requestPermission();
+        setNotificationPermission(perm);
+        if (perm === "granted") {
+          try {
+            new Notification("🔔 Notificaciones activadas", {
+              body: `Listo ${user?.nombre || ""}: Recibirás alertas instantáneas cuando recibas un ticket.`,
+              icon: "/logotecno.png",
+            });
+          } catch {}
+        }
+      } catch (err) {
+        console.warn("Error al solicitar permisos de notificación:", err);
+      }
+    }
+  };
 
   const triggerAlarm = useCallback(
     async (ticket: IncomingTicketNotice) => {
       setActiveAlert(ticket);
-      setIsPlaying(true);
 
       // Reproducir sonido personalizado para el usuario actual
       const played = await playUserAlarm(user?.nombre);
-      if (!played) {
-        setSoundBlocked(true);
-      } else {
-        setSoundBlocked(false);
-      }
+      setSoundBlocked(!played);
 
-      // Notificación nativa del sistema operativo/navegador
-      if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+      // Notificación nativa del sistema operativo/navegador (pantalla y escritorio)
+      if (
+        typeof window !== "undefined" &&
+        "Notification" in window &&
+        Notification.permission === "granted"
+      ) {
         try {
-          new Notification("🔔 Nuevo Ticket en Tecnocontrol", {
-            body: `#${ticket.id} (${ticket.departamento}) - ${ticket.title} por ${ticket.user}`,
+          const notif = new Notification(`🔔 Nuevo Ticket: ${ticket.title}`, {
+            body: `Folio #${ticket.id} (${ticket.departamento}) - Solicitante: ${ticket.user}${
+              ticket.asignadoA ? ` • Para: ${ticket.asignadoA}` : ""
+            }`,
             icon: "/logotecno.png",
+            tag: `ticket-${ticket.id}`,
           });
+
+          notif.onclick = () => {
+            window.focus();
+            notif.close();
+          };
         } catch {}
       }
     },
     [user]
   );
 
-  // Desbloquear audio con cualquier interacción del usuario
+  // Desbloquear audio automáticamente con cualquier interacción del usuario en la página
   useEffect(() => {
     const handleUserInteraction = () => {
+      unlockAudioContext();
       if (soundBlocked) {
         setSoundBlocked(false);
       }
     };
     window.addEventListener("click", handleUserInteraction);
     window.addEventListener("keydown", handleUserInteraction);
+    window.addEventListener("touchstart", handleUserInteraction);
     return () => {
       window.removeEventListener("click", handleUserInteraction);
       window.removeEventListener("keydown", handleUserInteraction);
+      window.removeEventListener("touchstart", handleUserInteraction);
     };
   }, [soundBlocked]);
 
@@ -87,6 +116,16 @@ export default function TicketAlarmListener() {
     if (!isAuthenticated || !user) return;
 
     let isMounted = true;
+
+    // Normalizador de destinatario para tolerar distintos formatos de datos
+    const extractAssignee = (t: Record<string, unknown>): string => {
+      let a = String(t.asignadoA ?? t.asignado_a ?? t.asignado ?? "").trim();
+      if (!a && typeof t.detalles === "string") {
+        const match = t.detalles.match(/\[Dirigido a:\s*([^\]\n]+)\]/i);
+        if (match) a = match[1].trim();
+      }
+      return a;
+    };
 
     const checkTickets = async () => {
       try {
@@ -107,16 +146,28 @@ export default function TicketAlarmListener() {
         const newTickets = data.filter((t) => !knownTicketIdsRef.current.has(String(t.id)));
 
         if (newTickets.length > 0) {
-          // Agregar nuevos IDs a la lista conocida para no repetir
+          // Agregar nuevos IDs de inmediato a la lista conocida para no repetir alertas
           newTickets.forEach((t) => knownTicketIdsRef.current.add(String(t.id)));
+
+          const now = Date.now();
 
           // Buscar el primer ticket nuevo que le competa al usuario
           for (const t of newTickets) {
+            // Regla de seguridad: Si el ticket tiene fecha de creación y es mayor a 5 minutos,
+            // no sonar alarma (evita falsas alarmas por reconexiones o sincronizaciones)
+            if (t.created_at) {
+              const createdMs = new Date(t.created_at).getTime();
+              if (!isNaN(createdMs) && now - createdMs > 300_000) {
+                continue;
+              }
+            }
+
+            const asignado = extractAssignee(t);
             const matchesUser = shouldAlarmForUser(
               t.departamento || "",
               user.departamento,
               user.role,
-              t.asignadoA,
+              asignado,
               user.nombre
             );
 
@@ -126,14 +177,14 @@ export default function TicketAlarmListener() {
                 title: String(t.title || "Sin título"),
                 user: String(t.user || "Usuario"),
                 departamento: String(t.departamento || ""),
-                asignadoA: t.asignadoA ? String(t.asignadoA) : "",
+                asignadoA: asignado,
                 timestamp: Date.now(),
               });
-              break; // Una alerta a la vez
+              break; // Una alerta sonora a la vez
             }
           }
         }
-      } catch (err) {
+      } catch {
         // Silencioso en caso de pérdida de red temporal
       }
     };
@@ -153,7 +204,6 @@ export default function TicketAlarmListener() {
   // Cerrar alerta y detener audio
   const handleDismiss = () => {
     stopAlarm();
-    setIsPlaying(false);
     setActiveAlert(null);
     setSoundBlocked(false);
   };
@@ -163,7 +213,6 @@ export default function TicketAlarmListener() {
     const ok = await playUserAlarm(user?.nombre, true);
     if (ok) {
       setSoundBlocked(false);
-      requestDesktopNotification();
     }
   };
 
@@ -171,7 +220,43 @@ export default function TicketAlarmListener() {
 
   return (
     <>
-      {/* Banner flotante de Alerta de Nuevo Ticket */}
+      {/* ──── BANNER SUGERENCIA DE PERMISOS DE ESCRITORIO (si están en "default") ──── */}
+      {notificationPermission === "default" && !dismissedPermissionPrompt && (
+        <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 max-w-xl w-[94vw] bg-white border border-[#003479]/20 rounded-2xl shadow-xl shadow-[#003479]/10 p-3 sm:p-3.5 flex items-center justify-between gap-3 animate-fade-in backdrop-blur-md">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="w-8 h-8 rounded-xl bg-[#003479]/10 text-[#003479] flex items-center justify-center shrink-0">
+              🔔
+            </span>
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-zinc-900 leading-tight">
+                Activa las notificaciones de escritorio
+              </p>
+              <p className="text-[11px] text-zinc-500 truncate">
+                Recibe avisos al instante cuando te asignen un ticket, incluso si estás en otra ventana.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={handleRequestNotifications}
+              className="px-3 py-1.5 rounded-lg bg-[#003479] hover:bg-[#00275C] text-white text-xs font-semibold shadow-xs transition-all active:scale-95 cursor-pointer"
+            >
+              Activar
+            </button>
+            <button
+              type="button"
+              onClick={() => setDismissedPermissionPrompt(true)}
+              className="p-1.5 text-zinc-400 hover:text-zinc-600 rounded-lg hover:bg-zinc-100 transition-colors cursor-pointer text-xs"
+              title="Ocultar"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ──── BANNER FLOTANTE DE ALERTA DE NUEVO TICKET ──── */}
       {activeAlert && (
         <div
           role="alert"

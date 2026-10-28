@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState, useEffect, useCallback } from "react";
 import { DEPARTAMENTOS } from "@/lib/departamentos";
 import { getUsersByDepartment } from "@/lib/auth";
+import { useAuth } from "@/lib/auth-context";
 import AdminNav from "@/components/AdminNav";
 
 interface Ticket {
@@ -59,12 +60,32 @@ function Spinner() {
 function AdminDashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user } = useAuth();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("ALL");
+  const [filterDept, setFilterDept] = useState<string>("ALL");
+  const [userDeptInitialized, setUserDeptInitialized] = useState(false);
   const [respuestaTexto, setRespuestaTexto] = useState("");
+
+  // Inicializar filtro de departamento con el departamento del usuario para que cada departamento vea el suyo
+  useEffect(() => {
+    if (user?.departamento && !userDeptInitialized) {
+      if (user.role === "departamento") {
+        setFilterDept(user.departamento);
+      }
+      setUserDeptInitialized(true);
+    }
+  }, [user, userDeptInitialized]);
+
+  // Si cambia de usuario activo en la sesión, reajustar filtro
+  useEffect(() => {
+    if (user?.departamento && user.role === "departamento") {
+      setFilterDept(user.departamento);
+    }
+  }, [user?.id, user?.departamento, user?.role]);
   const [isReplying, setIsReplying] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [exportSuccess, setExportSuccess] = useState<string | null>(null);
@@ -310,15 +331,24 @@ function AdminDashboardContent() {
       t.user?.toLowerCase().includes(term) ||
       t.title?.toLowerCase().includes(term) ||
       t.departamento?.toLowerCase().includes(term) ||
-      t.sucursal?.toLowerCase().includes(term);
-    return matchesSearch && (filterStatus === "ALL" || t.status === filterStatus);
+      t.sucursal?.toLowerCase().includes(term) ||
+      (t.asignadoA && t.asignadoA.toLowerCase().includes(term));
+
+    const matchesStatus = filterStatus === "ALL" || t.status === filterStatus;
+    const matchesDept = filterDept === "ALL" || t.departamento?.toLowerCase() === filterDept.toLowerCase();
+
+    return matchesSearch && matchesStatus && matchesDept;
   });
 
+  const deptScopedTickets = filterDept === "ALL"
+    ? tickets
+    : tickets.filter(t => t.departamento?.toLowerCase() === filterDept.toLowerCase());
+
   const counts = {
-    total: tickets.length,
-    open: tickets.filter(t => t.status === "open").length,
-    progress: tickets.filter(t => t.status === "progress").length,
-    resolved: tickets.filter(t => t.status === "resolved").length,
+    total: deptScopedTickets.length,
+    open: deptScopedTickets.filter(t => t.status === "open").length,
+    progress: deptScopedTickets.filter(t => t.status === "progress").length,
+    resolved: deptScopedTickets.filter(t => t.status === "resolved").length,
   };
 
   return (
@@ -417,11 +447,85 @@ function AdminDashboardContent() {
 
         {/* Tabla */}
         <div className="animate-fade-in-up delay-100">
-          <div className="flex items-center justify-between gap-3 mb-4">
-            <h2 className="text-base font-semibold text-[#003479] flex items-center gap-2">
-              Solicitudes Registradas
-              <span className="text-xs px-2 py-0.5 rounded-full bg-[#003479]/10 text-[#003479] font-bold">{filteredTickets.length}</span>
-            </h2>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h2 className="text-base font-semibold text-[#003479] flex items-center gap-2">
+                Solicitudes Registradas
+                <span className="text-xs px-2 py-0.5 rounded-full bg-[#003479]/10 text-[#003479] font-bold">{filteredTickets.length}</span>
+              </h2>
+
+              {filterDept !== "ALL" && (
+                <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-100 text-[#003479] flex items-center gap-1.5 border border-blue-200">
+                  <span>Depto: <strong>{filterDept}</strong></span>
+                  <button
+                    type="button"
+                    onClick={() => setFilterDept("ALL")}
+                    className="hover:text-red-600 font-bold ml-0.5 cursor-pointer text-xs"
+                    title="Ver todos los departamentos"
+                  >
+                    ✕
+                  </button>
+                </span>
+              )}
+            </div>
+
+            {/* Acceso rápido a mi departamento */}
+            {user?.departamento && filterDept !== user.departamento && (
+              <button
+                type="button"
+                onClick={() => setFilterDept(user.departamento)}
+                className="text-xs font-semibold text-[#003479] hover:text-[#00275C] bg-[#003479]/10 hover:bg-[#003479]/15 px-3 py-1.5 rounded-xl border border-[#003479]/20 transition-all flex items-center gap-1.5 self-start sm:self-auto cursor-pointer shadow-2xs active:scale-95"
+              >
+                <span>📍 Ver solo mi departamento ({user.departamento})</span>
+              </button>
+            )}
+          </div>
+
+          {/* Filtros por Departamento (Tabs) */}
+          <div className="bg-white p-2.5 rounded-xl border border-[#EAEAEA] shadow-xs mb-3 flex items-center gap-1.5 overflow-x-auto">
+            <span className="text-xs font-semibold text-[#37312E]/60 whitespace-nowrap px-2 flex items-center gap-1 shrink-0">
+              <svg className="w-3.5 h-3.5 text-[#003479]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+              </svg>
+              <span>Departamento:</span>
+            </span>
+
+            <button
+              type="button"
+              onClick={() => setFilterDept("ALL")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                filterDept === "ALL"
+                  ? "bg-[#003479] text-white shadow-xs"
+                  : "bg-[#F7F8FA] hover:bg-zinc-100 text-[#37312E]/70 border border-[#EAEAEA]"
+              }`}
+            >
+              <span>Todos</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${filterDept === "ALL" ? "bg-white/20 text-white" : "bg-zinc-200 text-zinc-700"}`}>
+                {tickets.length}
+              </span>
+            </button>
+
+            {DEPARTAMENTOS.map((d) => {
+              const count = tickets.filter((t) => t.departamento?.toLowerCase() === d.toLowerCase()).length;
+              const isSelected = filterDept.toLowerCase() === d.toLowerCase();
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setFilterDept(isSelected ? "ALL" : d)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                    isSelected
+                      ? "bg-[#003479] text-white shadow-xs"
+                      : "bg-[#F7F8FA] hover:bg-zinc-100 text-[#37312E]/70 border border-[#EAEAEA]"
+                  }`}
+                >
+                  <span>{d}</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${isSelected ? "bg-white/20 text-white" : "bg-zinc-200 text-zinc-700"}`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
           {/* Search + Filter toolbar */}
@@ -441,7 +545,7 @@ function AdminDashboardContent() {
             </div>
 
             <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto">
-              <span className="text-xs font-medium text-[#37312E]/50 whitespace-nowrap shrink-0">Filtrar:</span>
+              <span className="text-xs font-medium text-[#37312E]/50 whitespace-nowrap shrink-0">Estado:</span>
               {[{ id: "ALL", label: "Todos" }, { id: "open", label: "Pendientes" }, { id: "progress", label: "En Progreso" }, { id: "resolved", label: "Resueltos" }].map(f => (
                 <button
                   key={f.id}
@@ -450,8 +554,14 @@ function AdminDashboardContent() {
                   className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${filterStatus === f.id ? "bg-[#003479] text-white shadow-sm" : "bg-[#F7F8FA] text-[#37312E]/60 border border-[#EAEAEA] hover:border-[#003479]/25 hover:text-[#003479]"}`}
                 >{f.label}</button>
               ))}
-              {(filterStatus !== "ALL" || searchTerm) && (
-                <button type="button" onClick={() => { setFilterStatus("ALL"); setSearchTerm(""); }} className="text-xs text-[#CA1224] hover:bg-red-50 px-2 py-1 rounded-lg whitespace-nowrap cursor-pointer">✕ Limpiar</button>
+              {(filterStatus !== "ALL" || filterDept !== "ALL" || searchTerm) && (
+                <button
+                  type="button"
+                  onClick={() => { setFilterStatus("ALL"); setFilterDept("ALL"); setSearchTerm(""); }}
+                  className="text-xs text-[#CA1224] hover:bg-red-50 px-2 py-1 rounded-lg whitespace-nowrap cursor-pointer font-medium"
+                >
+                  ✕ Limpiar
+                </button>
               )}
             </div>
           </div>

@@ -54,6 +54,61 @@ export function saveSoundSettings(enabled: boolean, volume: number): void {
 }
 
 let activeAudioInstance: HTMLAudioElement | null = null;
+let sharedAudioContext: AudioContext | null = null;
+
+/**
+ * Desbloquea el contexto de audio del navegador en cuanto el usuario interactúa
+ * con la página (clic, toque o teclado), garantizando que las alarmas suenen sin bloqueo.
+ */
+export function unlockAudioContext(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtx) return false;
+    if (!sharedAudioContext) {
+      sharedAudioContext = new AudioCtx();
+    }
+    if (sharedAudioContext.state === "suspended") {
+      sharedAudioContext.resume().catch(() => {});
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Tono sintetizado de campana / chime como respaldo infalible si el archivo MP3
+ * no se puede reproducir o es bloqueado por políticas de autoplay.
+ */
+export function playSynthesizedChime(volume = 1.0): void {
+  if (typeof window === "undefined") return;
+  try {
+    unlockAudioContext();
+    if (!sharedAudioContext) return;
+
+    const ctx = sharedAudioContext;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = "sine";
+    // Melodía de 2 tonos distintivos (alerta de ticket)
+    osc.frequency.setValueAtTime(587.33, now); // Re (D5)
+    osc.frequency.setValueAtTime(880, now + 0.15); // La (A5)
+
+    const targetVol = Math.min(1, Math.max(0.05, volume * 0.45));
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(targetVol, now + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.7);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.75);
+  } catch {}
+}
 
 /**
  * Reproduce la alarma asignada al usuario.
@@ -67,7 +122,7 @@ export async function playUserAlarm(userName?: string | null, forcePlay = false)
     return false;
   }
 
-  const audioUrl = getUserAudioUrl(userName);
+  unlockAudioContext();
 
   try {
     // Si había un audio sonando, detenerlo
@@ -85,8 +140,13 @@ export async function playUserAlarm(userName?: string | null, forcePlay = false)
     await audio.play();
     return true;
   } catch (err) {
-    console.warn("No se pudo reproducir la alarma (requiere interacción previa):", err);
-    return false;
+    console.warn("Audio principal no disponible o autoplay bloqueado, usando tono sintetizado:", err);
+    try {
+      playSynthesizedChime(volume);
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 

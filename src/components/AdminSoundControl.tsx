@@ -80,6 +80,27 @@ export default function AdminSoundControl() {
       try {
         const perm = await Notification.requestPermission();
         setNotificationPermission(perm);
+        if (perm === "granted") {
+          try {
+            new Notification("🔔 Notificaciones activadas", {
+              body: `Las notificaciones de escritorio están funcionando para ${user?.nombre || "tu usuario"}.`,
+              icon: "/logotecno.png",
+            });
+          } catch {}
+        }
+      } catch (err) {
+        console.warn("Error solicitando permisos:", err);
+      }
+    }
+  };
+
+  const handleTestNotification = () => {
+    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+      try {
+        new Notification("🔔 Prueba de Notificación Tecnocontrol", {
+          body: `Hola ${user?.nombre || "Usuario"}, tu equipo recibirá avisos en segundo plano.`,
+          icon: "/logotecno.png",
+        });
       } catch {}
     }
   };
@@ -203,18 +224,39 @@ export default function AdminSoundControl() {
             )}
 
             {/* Notificaciones de escritorio */}
-            {notificationPermission !== "granted" && (
-              <div className="pt-2 border-t border-zinc-100">
+            <div className="pt-2 border-t border-zinc-100">
+              {notificationPermission === "granted" ? (
+                <div className="p-2 rounded-xl bg-emerald-50/70 border border-emerald-200/60 text-[11px] text-emerald-800 flex items-center justify-between gap-1">
+                  <span className="flex items-center gap-1 font-medium">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+                    Avisos de escritorio activos
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleTestNotification}
+                    className="text-[10px] font-bold text-[#003479] hover:underline cursor-pointer"
+                  >
+                    Probar
+                  </button>
+                </div>
+              ) : notificationPermission === "denied" ? (
+                <div className="p-2 rounded-xl bg-red-50 border border-red-200 text-[10px] text-red-700 leading-tight">
+                  <p className="font-bold">⚠️ Avisos bloqueados en el navegador</p>
+                  <p className="mt-0.5 text-zinc-600">
+                    Haz clic en el candado 🔒 junto a la URL y cambia &quot;Notificaciones&quot; a Permitir.
+                  </p>
+                </div>
+              ) : (
                 <button
                   type="button"
                   onClick={handleRequestNotifications}
-                  className="w-full text-left p-2 rounded-xl bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 text-[11px] text-zinc-700 flex items-center justify-between gap-1 transition-colors"
+                  className="w-full text-left p-2 rounded-xl bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 text-[11px] text-zinc-700 flex items-center justify-between gap-1 transition-colors cursor-pointer"
                 >
                   <span>Activar avisos de escritorio</span>
                   <span className="font-bold text-[#003479]">Permitir</span>
                 </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
           <div className="pt-2 border-t border-zinc-100 text-[10px] text-zinc-400 text-center">
