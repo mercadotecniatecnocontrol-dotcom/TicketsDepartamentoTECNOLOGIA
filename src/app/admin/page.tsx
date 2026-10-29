@@ -87,6 +87,19 @@ function AdminDashboardContent() {
     }
   }, [user?.id, user?.departamento, user?.role]);
   const [isReplying, setIsReplying] = useState(false);
+  const [isTransferring, setIsTransferring] = useState(false);
+  const [transferDept, setTransferDept] = useState<string>("");
+  const [transferAssignees, setTransferAssignees] = useState<string[]>([]);
+  const [transferReason, setTransferReason] = useState("");
+  const [isSubmittingTransfer, setIsSubmittingTransfer] = useState(false);
+  const [transferSuccessMsg, setTransferSuccessMsg] = useState<string | null>(null);
+
+  const isAssignedToMe = (ticket: Ticket | null, currentUserName?: string | null): boolean => {
+    if (!ticket || !currentUserName) return false;
+    const me = currentUserName.trim().toLowerCase();
+    const asignados = (ticket.asignadoA || "").split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+    return asignados.some(a => a === me || a.includes(me) || me.includes(a));
+  };
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [exportSuccess, setExportSuccess] = useState<string | null>(null);
   const [createdFolioAlert, setCreatedFolioAlert] = useState<string | null>(null);
@@ -210,6 +223,33 @@ function AdminDashboardContent() {
       setIsReplying(false);
     } catch { setApiError("Error al guardar respuesta."); }
     finally { setSaving(false); }
+  };
+
+  const handleConfirmTransfer = async () => {
+    if (!selectedTicket || transferAssignees.length === 0) return;
+    setIsSubmittingTransfer(true);
+    try {
+      const now = new Date();
+      const fechaHora = `${now.toLocaleDateString()} ${now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+      const nuevoDestinatario = transferAssignees.join(", ");
+      const auditNote = `\n\n[🔄 Transferido por ${user?.nombre || "Usuario"} a ${nuevoDestinatario} (${transferDept}) el ${fechaHora}${transferReason.trim() ? `: "${transferReason.trim()}"` : ""}]`;
+
+      const updated: Ticket = {
+        ...selectedTicket,
+        departamento: transferDept,
+        asignadoA: nuevoDestinatario,
+        detalles: (selectedTicket.detalles || "") + auditNote,
+      };
+
+      await updateTicketApi(updated);
+      setIsTransferring(false);
+      setTransferSuccessMsg(`Ticket transferido exitosamente a ${nuevoDestinatario}.`);
+      setTimeout(() => setTransferSuccessMsg(null), 5000);
+    } catch {
+      setApiError("No se pudo transferir el ticket.");
+    } finally {
+      setIsSubmittingTransfer(false);
+    }
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -673,6 +713,155 @@ function AdminDashboardContent() {
 
             {/* Body */}
             <div className="px-6 py-5 overflow-y-auto space-y-5 flex-1">
+              {/* Mensaje de éxito al transferir */}
+              {transferSuccessMsg && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center justify-between gap-2 animate-fade-in">
+                  <span className="font-semibold flex items-center gap-1.5">
+                    <span>✓</span> {transferSuccessMsg}
+                  </span>
+                  <button type="button" onClick={() => setTransferSuccessMsg(null)} className="text-emerald-700 hover:text-emerald-900 font-bold cursor-pointer">✕</button>
+                </div>
+              )}
+
+              {/* SECCIÓN DE TRANSFERENCIA (solo si está activa) */}
+              {isTransferring && (
+                <div className="bg-gradient-to-br from-amber-50/90 to-amber-50/40 border-2 border-amber-300/80 rounded-2xl p-4 sm:p-5 space-y-4 animate-fade-in shadow-xs">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-800 flex items-center justify-center text-lg shrink-0">
+                        🔀
+                      </span>
+                      <div>
+                        <h4 className="text-xs font-bold text-amber-950 uppercase tracking-wider">
+                          Transferir Solicitud
+                        </h4>
+                        <p className="text-[11px] text-amber-800/80 mt-0.5">
+                          Asignado actualmente a: <strong className="text-amber-950">{selectedTicket.asignadoA || "Todo el equipo"}</strong>
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsTransferring(false)}
+                      className="text-amber-700 hover:text-amber-950 text-xs font-bold px-2 py-1 rounded-lg hover:bg-amber-100/50 cursor-pointer"
+                    >
+                      ✕ Cancelar
+                    </button>
+                  </div>
+
+                  {/* Selector de Departamento y Usuarios */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
+                    <div>
+                      <label className="block text-[10px] font-bold text-amber-900 uppercase tracking-wider mb-1.5">
+                        Departamento de Destino
+                      </label>
+                      <select
+                        value={transferDept}
+                        onChange={(e) => {
+                          const nextDept = e.target.value;
+                          setTransferDept(nextDept);
+                          const users = getUsersByDepartment(nextDept as any);
+                          const otherUsers = users.filter(u => u.nombre.toLowerCase() !== user?.nombre?.toLowerCase());
+                          setTransferAssignees(otherUsers.length > 0 ? [otherUsers[0].nombre] : (users.length > 0 ? [users[0].nombre] : []));
+                        }}
+                        className="w-full px-3 py-2 border border-amber-300/70 rounded-xl bg-white text-xs text-zinc-800 focus:outline-none focus:ring-2 focus:ring-amber-500/30 cursor-pointer shadow-2xs font-medium"
+                      >
+                        {DEPARTAMENTOS.map(d => (
+                          <option key={d} value={d}>{d}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="block text-[10px] font-bold text-amber-900 uppercase tracking-wider">
+                          Reasignar a (uno o varios) *
+                        </label>
+                        {getUsersByDepartment(transferDept as any).length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const allUsers = getUsersByDepartment(transferDept as any).map(u => u.nombre);
+                              if (transferAssignees.length === allUsers.length) {
+                                setTransferAssignees([allUsers[0]]);
+                              } else {
+                                setTransferAssignees(allUsers);
+                              }
+                            }}
+                            className="text-[10px] font-bold text-amber-900 hover:underline cursor-pointer"
+                          >
+                            {transferAssignees.length === getUsersByDepartment(transferDept as any).length ? "Solo 1" : "Todos"}
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {getUsersByDepartment(transferDept as any).map(u => {
+                          const isSel = transferAssignees.includes(u.nombre);
+                          return (
+                            <button
+                              key={u.id}
+                              type="button"
+                              onClick={() => {
+                                setTransferAssignees(prev => {
+                                  if (prev.includes(u.nombre)) {
+                                    if (prev.length <= 1) return prev;
+                                    return prev.filter(n => n !== u.nombre);
+                                  } else {
+                                    return [...prev, u.nombre];
+                                  }
+                                });
+                              }}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                                isSel
+                                  ? "bg-[#003479] text-white shadow-xs"
+                                  : "bg-white text-zinc-700 border border-amber-200 hover:bg-amber-100/50"
+                              }`}
+                            >
+                              <span>{u.nombre}</span>
+                              <span className="text-[11px]">{isSel ? "✓" : "+"}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Motivo o Nota */}
+                  <div>
+                    <label className="block text-[10px] font-bold text-amber-900 uppercase tracking-wider mb-1">
+                      Motivo o nota de la transferencia (opcional)
+                    </label>
+                    <input
+                      type="text"
+                      value={transferReason}
+                      onChange={(e) => setTransferReason(e.target.value)}
+                      placeholder="Ej: Asignado por error, corresponde a Erika de Marketing..."
+                      className="w-full px-3 py-2 border border-amber-300/70 rounded-xl bg-white text-xs text-zinc-800 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-amber-500/30 shadow-2xs"
+                    />
+                  </div>
+
+                  {/* Botones de acción de transferencia */}
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-amber-200/70">
+                    <button
+                      type="button"
+                      onClick={() => setIsTransferring(false)}
+                      className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-zinc-600 hover:bg-white cursor-pointer transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isSubmittingTransfer || transferAssignees.length === 0}
+                      onClick={handleConfirmTransfer}
+                      className="px-4 py-2 rounded-xl bg-[#003479] hover:bg-[#00275C] text-white text-xs font-bold shadow-sm transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                    >
+                      <span>🔀</span>
+                      <span>{isSubmittingTransfer ? "Transfiriendo..." : `Transferir a ${transferAssignees.join(", ")}`}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Estado + Prioridad */}
               <div className="bg-[#F7F8FA] p-4 rounded-xl border border-[#EAEAEA]">
                 <div className="grid sm:grid-cols-2 gap-4">
@@ -807,13 +996,32 @@ function AdminDashboardContent() {
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                 Eliminar
               </button>
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+                {/* BOTÓN TRANSFERIR: visible ÚNICAMENTE si la persona asignada es el usuario actual */}
+                {isAssignedToMe(selectedTicket, user?.nombre) && !isTransferring && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsTransferring(true);
+                      setTransferDept(selectedTicket.departamento);
+                      const deptUsers = getUsersByDepartment(selectedTicket.departamento as any);
+                      const otherUsers = deptUsers.filter(u => u.nombre.toLowerCase() !== user?.nombre?.toLowerCase());
+                      setTransferAssignees(otherUsers.length > 0 ? [otherUsers[0].nombre] : (deptUsers.length > 0 ? [deptUsers[0].nombre] : []));
+                      setTransferReason("");
+                    }}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-300/80 px-3.5 py-2 rounded-xl transition-all cursor-pointer shadow-2xs active:scale-95"
+                    title="Transferir este ticket si te fue asignado por error"
+                  >
+                    <span>🔀 Transferir Ticket</span>
+                  </button>
+                )}
+
                 {!isReplying && (
                   <button type="button" onClick={() => { setRespuestaTexto(selectedTicket.respuesta || ""); setIsReplying(true); }} className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#003479] bg-white border border-[#003479]/25 px-4 py-2 rounded-xl hover:bg-[#003479]/5 transition-colors cursor-pointer shadow-sm">
                     💬 {selectedTicket.respuesta ? "Editar Dictamen" : "Responder"}
                   </button>
                 )}
-                <button type="button" onClick={() => { setSelectedTicket(null); setIsReplying(false); }} className="text-xs font-semibold text-white bg-[#003479] hover:bg-[#00275C] px-5 py-2 rounded-xl transition-all cursor-pointer shadow-sm">Cerrar</button>
+                <button type="button" onClick={() => { setSelectedTicket(null); setIsReplying(false); setIsTransferring(false); }} className="text-xs font-semibold text-white bg-[#003479] hover:bg-[#00275C] px-5 py-2 rounded-xl transition-all cursor-pointer shadow-sm">Cerrar</button>
               </div>
             </div>
           </div>
@@ -913,21 +1121,53 @@ function AdminDashboardContent() {
                 {/* Dirigido a */}
                 <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-200">
                   <div className="flex items-center justify-between mb-2">
-                    <label className="text-[10px] font-bold text-[#003479] uppercase tracking-wider">
-                      Dirigido a (Personal de {newTicketForm.departamento}) *
-                    </label>
-                    <span className="text-[10px] text-zinc-500 font-medium">
-                      {getUsersByDepartment(newTicketForm.departamento as any).length} disponibles
-                    </span>
+                    <div>
+                      <label className="text-[10px] font-bold text-[#003479] uppercase tracking-wider block">
+                        Dirigido a (Personal de {newTicketForm.departamento}) *
+                      </label>
+                      <p className="text-[10px] text-zinc-500">Selecciona uno o varios encargados</p>
+                    </div>
+                    {getUsersByDepartment(newTicketForm.departamento as any).length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const allUsers = getUsersByDepartment(newTicketForm.departamento as any).map(u => u.nombre);
+                          const current = (newTicketForm.asignadoA || "").split(",").map(s => s.trim()).filter(Boolean);
+                          if (current.length === allUsers.length) {
+                            setNewTicketForm(p => ({ ...p, asignadoA: allUsers[0] }));
+                          } else {
+                            setNewTicketForm(p => ({ ...p, asignadoA: allUsers.join(", ") }));
+                          }
+                        }}
+                        className="text-[10px] font-bold text-[#003479] hover:underline cursor-pointer"
+                      >
+                        {(newTicketForm.asignadoA || "").split(",").map(s => s.trim()).filter(Boolean).length === getUsersByDepartment(newTicketForm.departamento as any).length
+                          ? "Elegir solo 1"
+                          : "Seleccionar todos"}
+                      </button>
+                    )}
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {getUsersByDepartment(newTicketForm.departamento as any).map((u) => {
-                      const sel = newTicketForm.asignadoA === u.nombre;
+                      const currentAssignees = (newTicketForm.asignadoA || "")
+                        .split(",")
+                        .map(s => s.trim())
+                        .filter(Boolean);
+                      const sel = currentAssignees.includes(u.nombre);
                       return (
                         <button
                           key={u.id}
                           type="button"
-                          onClick={() => setNewTicketForm(p => ({ ...p, asignadoA: u.nombre }))}
+                          onClick={() => {
+                            let updated: string[];
+                            if (sel) {
+                              if (currentAssignees.length <= 1) return;
+                              updated = currentAssignees.filter(n => n !== u.nombre);
+                            } else {
+                              updated = [...currentAssignees, u.nombre];
+                            }
+                            setNewTicketForm(p => ({ ...p, asignadoA: updated.join(", ") }));
+                          }}
                           className={`p-2.5 rounded-xl border text-left flex items-center gap-2.5 cursor-pointer transition-all ${
                             sel ? "border-[#003479] bg-white ring-1 ring-[#003479] shadow-xs" : "border-zinc-200 bg-white hover:bg-zinc-50"
                           }`}
@@ -936,10 +1176,14 @@ function AdminDashboardContent() {
                             {u.nombre.charAt(0)}
                           </span>
                           <div className="min-w-0 flex-1">
-                            <p className={`text-xs font-bold truncate ${sel ? "text-[#003479]" : "text-zinc-800"}`}>{u.nombre}</p>
+                            <div className="flex items-center justify-between">
+                              <p className={`text-xs font-bold truncate ${sel ? "text-[#003479]" : "text-zinc-800"}`}>{u.nombre}</p>
+                              <span className={`w-4 h-4 rounded-md flex items-center justify-center text-[10px] font-bold ${
+                                sel ? "bg-[#003479] text-white" : "border border-zinc-300 text-transparent"
+                              }`}>✓</span>
+                            </div>
                             <p className="text-[10px] text-zinc-500 truncate">{u.cargo}</p>
                           </div>
-                          {sel && <span className="text-[10px] text-[#003479] font-bold">✓</span>}
                         </button>
                       );
                     })}

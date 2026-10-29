@@ -28,7 +28,8 @@ export default function TicketAlarmListener() {
   >("default");
   const [dismissedPermissionPrompt, setDismissedPermissionPrompt] = useState(false);
 
-  const knownTicketIdsRef = useRef<Set<string>>(new Set());
+  // Mapa de id -> asignadoA para detectar tanto tickets nuevos como reasignaciones/transferencias
+  const knownTicketMapRef = useRef<Map<string, string>>(new Map());
   const initialFetchDoneRef = useRef(false);
 
   // Consultar estado de permisos de notificación al cargar
@@ -49,7 +50,7 @@ export default function TicketAlarmListener() {
         if (perm === "granted") {
           try {
             new Notification("🔔 Notificaciones activadas", {
-              body: `Listo ${user?.nombre || ""}: Recibirás alertas instantáneas cuando recibas un ticket.`,
+              body: `Listo ${user?.nombre || ""}: Recibirás alertas instantáneas cuando recibas o te transfieran un ticket.`,
               icon: "/logotecno.png",
             });
           } catch {}
@@ -75,7 +76,7 @@ export default function TicketAlarmListener() {
         Notification.permission === "granted"
       ) {
         try {
-          const notif = new Notification(`🔔 Nuevo Ticket: ${ticket.title}`, {
+          const notif = new Notification(`🔔 Ticket Recibido: ${ticket.title}`, {
             body: `Folio #${ticket.id} (${ticket.departamento}) - Solicitante: ${ticket.user}${
               ticket.asignadoA ? ` • Para: ${ticket.asignadoA}` : ""
             }`,
@@ -111,7 +112,7 @@ export default function TicketAlarmListener() {
     };
   }, [soundBlocked]);
 
-  // Polling de tickets cada 7 segundos para detectar nuevas entradas en tiempo real
+  // Polling de tickets cada 7 segundos para detectar nuevas entradas y transferencias en tiempo real
   useEffect(() => {
     if (!isAuthenticated || !user) return;
 
@@ -134,50 +135,62 @@ export default function TicketAlarmListener() {
         const data = await res.json();
         if (!Array.isArray(data) || !isMounted) return;
 
-        // En la primera carga, solo registramos los IDs existentes sin sonar
+        // En la primera carga, solo registramos los IDs y asignados existentes sin sonar
         if (!initialFetchDoneRef.current) {
-          const ids = new Set<string>(data.map((t) => String(t.id)));
-          knownTicketIdsRef.current = ids;
+          data.forEach((t) => {
+            knownTicketMapRef.current.set(String(t.id), extractAssignee(t));
+          });
           initialFetchDoneRef.current = true;
           return;
         }
 
-        // Detectar tickets que no estaban en la lista conocida
-        const newTickets = data.filter((t) => !knownTicketIdsRef.current.has(String(t.id)));
+        const now = Date.now();
 
-        if (newTickets.length > 0) {
-          // Agregar nuevos IDs de inmediato a la lista conocida para no repetir alertas
-          newTickets.forEach((t) => knownTicketIdsRef.current.add(String(t.id)));
+        // Buscar tickets nuevos O reasignados que le competan al usuario actual
+        for (const t of data) {
+          const tId = String(t.id);
+          const currentAssignee = extractAssignee(t);
+          const prevAssignee = knownTicketMapRef.current.get(tId);
 
-          const now = Date.now();
+          const isNew = prevAssignee === undefined;
+          const isReassigned = !isNew && prevAssignee !== currentAssignee;
 
-          // Buscar el primer ticket nuevo que le competa al usuario
-          for (const t of newTickets) {
-            // Regla de seguridad: Si el ticket tiene fecha de creación y es mayor a 5 minutos,
-            // no sonar alarma (evita falsas alarmas por reconexiones o sincronizaciones)
-            if (t.created_at) {
+          if (isNew || isReassigned) {
+            // Actualizar registro para no repetir alerta
+            knownTicketMapRef.current.set(tId, currentAssignee);
+
+            // Si es ticket nuevo, no sonar si tiene más de 5 minutos
+            if (isNew && t.created_at) {
               const createdMs = new Date(t.created_at).getTime();
               if (!isNaN(createdMs) && now - createdMs > 300_000) {
                 continue;
               }
             }
 
-            const asignado = extractAssignee(t);
+            // Si fue reasignado y el usuario actual fue quien lo transfirió, no sonar para sí mismo
+            if (
+              isReassigned &&
+              user.nombre &&
+              prevAssignee.toLowerCase().includes(user.nombre.toLowerCase())
+            ) {
+              continue;
+            }
+
             const matchesUser = shouldAlarmForUser(
               t.departamento || "",
               user.departamento,
               user.role,
-              asignado,
+              currentAssignee,
               user.nombre
             );
 
             if (matchesUser) {
               triggerAlarm({
-                id: String(t.id),
+                id: tId,
                 title: String(t.title || "Sin título"),
                 user: String(t.user || "Usuario"),
                 departamento: String(t.departamento || ""),
-                asignadoA: asignado,
+                asignadoA: currentAssignee,
                 timestamp: Date.now(),
               });
               break; // Una alerta sonora a la vez

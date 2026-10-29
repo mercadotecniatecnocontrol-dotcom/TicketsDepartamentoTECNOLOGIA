@@ -166,7 +166,8 @@ export function stopAlarm(): void {
 /**
  * Determina si debe sonar la alarma para el usuario actual ante un ticket entrante.
  * Regla:
- * - Si el ticket va dirigido específicamente a un usuario -> ¡SOLO le suena su alarma a ese usuario!
+ * - Si el ticket va dirigido específicamente a uno o varios usuarios (ej. "Kevin" o "Kevin, Alan") ->
+ *   SOLO le suena la alarma a los usuarios que estén en la lista de asignados.
  * - Si el ticket va dirigido a otro usuario en particular -> NO le suena a este usuario.
  * - Si el ticket no tiene destinatario específico (general o sin asignar):
  *   -> le suena únicamente a los usuarios del departamento correspondiente.
@@ -187,22 +188,35 @@ export function shouldAlarmForUser(
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "");
 
-  const cleanAsignado = normalize(asignadoA);
   const cleanCurrent = normalize(currentUserName);
   const cleanTicket = normalize(ticketDepartamento);
   const cleanUserDept = normalize(userDepartamento);
 
-  // 1. Si el ticket está dirigido específicamente a alguien
-  if (
-    cleanAsignado &&
-    cleanAsignado !== "todos" &&
-    cleanAsignado !== "todo el equipo" &&
-    cleanAsignado !== "general" &&
-    cleanAsignado !== "sin asignar"
-  ) {
-    if (!cleanCurrent) return false;
-    // ÚNICAMENTE suena si coincide con el usuario asignado
-    return cleanAsignado.includes(cleanCurrent) || cleanCurrent.includes(cleanAsignado);
+  // 1. Si el ticket está dirigido específicamente a uno o varios usuarios
+  if (asignadoA && asignadoA.trim() !== "") {
+    const rawAsignados = asignadoA
+      .split(",")
+      .map(normalize)
+      .filter(Boolean);
+
+    const isGeneric = rawAsignados.some(
+      (a) =>
+        a === "todos" ||
+        a === "todo el equipo" ||
+        a === "general" ||
+        a === "sin asignar"
+    );
+
+    if (!isGeneric && rawAsignados.length > 0) {
+      if (!cleanCurrent) return false;
+      // ÚNICAMENTE suena si el usuario actual coincide con alguno de los destinatarios asignados
+      return rawAsignados.some(
+        (a) =>
+          a === cleanCurrent ||
+          a.includes(cleanCurrent) ||
+          cleanCurrent.includes(a)
+      );
+    }
   }
 
   // 2. Si el ticket no tiene usuario específico (es para todo el departamento):
